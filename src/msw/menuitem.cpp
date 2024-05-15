@@ -368,6 +368,8 @@ void MenuDrawData::Init(wxWindow const* window)
         // native menu uses small top margin for separator
         if ( SeparatorMargin.cyTopHeight >= 2 )
             SeparatorMargin.cyTopHeight -= 2;
+
+        SeparatorSize.cy = 0;
     }
     else
 #endif // wxUSE_UXTHEME

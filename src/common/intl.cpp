@@ -1628,6 +1628,12 @@ GetInfoFromLCID(LCID lcid,
             {
                 str = buf;
 
+//FIXME Vojtech: We forcefully set the locales for a decimal point to "C", but this
+// is not possible for the Win32 locales, therefore there is a discrepancy. 
+// It looks like we live with the discrepancy for at least half a year, so we will
+// suppress the assert until we fix Slic3r to properly switch to "C" locales just
+// for file import / export.
+#if 0
                 // As we get our decimal point separator from Win32 and not the
                 // CRT there is a possibility of mismatch between them and this
                 // can easily happen if the user code called setlocale()
@@ -1641,6 +1647,7 @@ GetInfoFromLCID(LCID lcid,
                     "Decimal separator mismatch -- did you use setlocale()?"
                     "If so, use wxLocale to change the locale instead."
                 );
+#endif
             }
             break;
 

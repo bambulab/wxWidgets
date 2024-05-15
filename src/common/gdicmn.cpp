@@ -863,9 +863,23 @@ void wxDisplaySize(int *width, int *height)
         *height = size.y;
 }
 
+void wxDisplaySize(const wxWindow *window, int *width, int *height)
+{
+    const wxSize size = wxGetDisplaySize(window);
+    if ( width )
+        *width = size.x;
+    if ( height )
+        *height = size.y;    
+}
+
 wxSize wxGetDisplaySize()
 {
     return wxDisplay().GetGeometry().GetSize();
+}
+
+wxSize wxGetDisplaySize(const wxWindow *window)
+{
+    return window ? wxDisplay(window).GetGeometry().GetSize() : wxDisplay().GetGeometry().GetSize();
 }
 
 void wxClientDisplayRect(int *x, int *y, int *width, int *height)

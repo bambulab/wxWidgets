@@ -4773,33 +4773,49 @@ static wxSize GetWindowDPI(HWND hwnd)
 }
 
 /*extern*/
-int wxGetSystemMetrics(int nIndex, const wxWindow* window)
+int wxGetSystemMetrics(int nIndex, const wxWindow* win)
 {
 #if wxUSE_DYNLIB_CLASS
-    if ( !window )
-        window = wxApp::GetMainTopWindow();
+    const wxWindow* window = (!win && wxTheApp) ? wxTheApp->GetTopWindow() : win;
 
-    if ( window )
+    if (window)
     {
-        typedef int (WINAPI * GetSystemMetricsForDpi_t)(int nIndex, UINT dpi);
-        static GetSystemMetricsForDpi_t s_pfnGetSystemMetricsForDpi = NULL;
-        static bool s_initDone = false;
-
-        if ( !s_initDone )
-        {
-            wxLoadedDLL dllUser32("user32.dll");
-            wxDL_INIT_FUNC(s_pfn, GetSystemMetricsForDpi, dllUser32);
-            s_initDone = true;
+#if 1
+        if (window->GetHWND() && (nIndex == SM_CXSCREEN || nIndex == SM_CYSCREEN)) {
+            HDC hdc = GetDC(window->GetHWND());
+#if 0
+            double dim = GetDeviceCaps(hdc, nIndex == SM_CXSCREEN ? HORZRES : VERTRES);
+            ReleaseDC(window->GetHWND(), hdc);
+            wxSize dpi = window->GetDPI();
+            dim *= 96.0 / (nIndex == SM_CXSCREEN ? dpi.x : dpi.y);
+            return int(dim + 0.5);
+#else
+            return int(GetDeviceCaps(hdc, nIndex == SM_CXSCREEN ? HORZRES : VERTRES));
+#endif
         }
-
-        if ( s_pfnGetSystemMetricsForDpi )
+        else
+#endif
         {
-            const int dpi = window->GetDPI().y;
-            return s_pfnGetSystemMetricsForDpi(nIndex, (UINT)dpi);
+            typedef int (WINAPI * GetSystemMetricsForDpi_t)(int nIndex, UINT dpi);
+            static GetSystemMetricsForDpi_t s_pfnGetSystemMetricsForDpi = NULL;
+            static bool s_initDone = false;
+
+            if ( !s_initDone )
+            {
+                wxLoadedDLL dllUser32("user32.dll");
+                wxDL_INIT_FUNC(s_pfn, GetSystemMetricsForDpi, dllUser32);
+                s_initDone = true;
+            }
+
+            if ( s_pfnGetSystemMetricsForDpi )
+            {
+                const int dpi = window->GetDPI().y;
+                return s_pfnGetSystemMetricsForDpi(nIndex, (UINT)dpi);
+            }
         }
     }
 #else
-    wxUnusedVar(window);
+    wxUnusedVar(win);
 #endif // wxUSE_DYNLIB_CLASS
 
     return ::GetSystemMetrics(nIndex);

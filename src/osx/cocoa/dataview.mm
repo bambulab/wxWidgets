@@ -1734,10 +1734,20 @@ outlineView:(NSOutlineView*)outlineView
         if ( !dvc->GetEventHandler()->ProcessEvent(eventDV) )
             [super keyDown:event];
     }
-    else
+    //FIXME Vojtech's hack to get the accelerators assigned to the wxDataViewControl working.
+    else if (! implementation->DoHandleKeyEvent(event))
     {
         [super keyDown:event];  // all other keys
     }
+}
+
+//FIXME Vojtech: This is a workaround to get at least the "mouse move" events at the wxDataViewControl,
+// so we can show the tooltips. The "mouse move" events are being send only if the wxDataViewControl
+// has focus, which is a limitation of wxWidgets. We may grab focus on "mouse entry" though.
+- (void)mouseMoved:(NSEvent *)event
+{
+if (! implementation->DoHandleMouseEvent(event))
+        [super mouseMoved:event];
 }
 
 //
@@ -2672,11 +2682,21 @@ void wxCocoaDataViewControl::DoSetIndent(int indent)
 
 void wxCocoaDataViewControl::HitTest(const wxPoint& point, wxDataViewItem& item, wxDataViewColumn*& columnPtr) const
 {
-    NSPoint const nativePoint = wxToNSPoint((NSScrollView*) GetWXWidget(),point);
+    NSTableHeaderView *headerView = [m_OutlineView headerView];
+    if (headerView && point.y < headerView.visibleRect.size.height) {
+    // The point is inside the header area.
+            columnPtr = NULL;
+            item      = wxDataViewItem();
+    return;
+        }
+    // Convert from the window coordinates to the virtual scrolled view coordinates.
+    NSScrollView *scrollView = [m_OutlineView enclosingScrollView];
+    const NSRect &visibleRect = scrollView.contentView.visibleRect;
+    NSPoint const nativePoint = wxToNSPoint((NSScrollView*) GetWXWidget(),
+    wxPoint(point.x + visibleRect.origin.x, point.y + visibleRect.origin.y));
 
     int indexColumn;
     int indexRow;
-
 
     indexColumn = [m_OutlineView columnAtPoint:nativePoint];
     indexRow    = [m_OutlineView rowAtPoint:   nativePoint];

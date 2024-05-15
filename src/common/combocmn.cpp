@@ -2141,7 +2141,7 @@ void wxComboCtrlBase::CreatePopup()
         #if !USES_GENERICTLW
             m_winPopup = new wxComboPopupWindowBase2( this, wxNO_BORDER );
         #else
-            int tlwFlags = wxNO_BORDER;
+            int tlwFlags = wxNO_BORDER | wxSTAY_ON_TOP;
           #ifdef wxCC_GENERIC_TLW_IS_FRAME
             tlwFlags |= wxFRAME_NO_TASKBAR;
           #endif
@@ -2285,6 +2285,9 @@ void wxComboCtrlBase::ShowPopup()
 
     SetFocus();
 
+    //int displayIdx = wxDisplay::GetFromWindow(this);
+    //wxRect displayRect = wxDisplay(displayIdx != wxNOT_FOUND ? displayIdx : 0u).GetGeometry();
+
     // Space above and below
     int screenHeight;
     wxPoint scrPos;
@@ -2407,9 +2410,13 @@ void wxComboCtrlBase::ShowPopup()
 
     int showFlags = CanDeferShow;
 
-    if ( spaceBelow < szp.y )
+    int anchorSideVertical = m_anchorSide & (wxUP | wxDOWN);
+    if (// Pop up as asked for by the library user.
+        (anchorSideVertical & wxUP) || 
+        // Automatic: Pop up if it does not fit down.
+        (anchorSideVertical == 0 && spaceBelow < szp.y ))
     {
-        popupY = scrPos.y - szp.y;
+        popupY = scrPos.y - szp.y + displayRect.GetTop();
         showFlags |= ShowAbove;
     }
 

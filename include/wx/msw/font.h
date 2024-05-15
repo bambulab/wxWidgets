@@ -23,7 +23,7 @@ public:
     // ctors and such
     wxFont() { }
 
-    wxFont(const wxFontInfo& info);
+    wxFont(const wxFontInfo& info, const wxWindow *window = nullptr);
 
     wxFont(int size,
            wxFontFamily family,

@@ -1322,7 +1322,11 @@ wxDataViewItem wxDataViewCtrlBase::GetSelection() const
 
     wxDataViewItemArray selections;
     GetSelections(selections);
-    return selections[0];
+    // BBS
+    if (!selections.empty())
+        return selections[0];
+    else
+        return wxDataViewItem(0);
 }
 
 namespace

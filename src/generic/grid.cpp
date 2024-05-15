@@ -3824,7 +3824,8 @@ void wxGrid::ProcessRowLabelMouseEvent( wxMouseEvent& event, wxGridRowLabelWindo
             {
                 case WXGRID_CURSOR_RESIZE_ROW:
                 {
-                    DoGridDragResize(event.GetPosition(), wxGridRowOperations(), gridWindow);
+                    //BBS: add cursor mode for DoGridDragResize's paremeters
+                    DoGridDragResize(event.GetPosition(), wxGridRowOperations(), gridWindow, WXGRID_CURSOR_RESIZE_ROW);
                 }
                 break;
 
@@ -4166,7 +4167,8 @@ void wxGrid::ProcessColLabelMouseEvent( wxMouseEvent& event, wxGridColLabelWindo
             switch ( m_cursorMode )
             {
                 case WXGRID_CURSOR_RESIZE_COL:
-                    DoGridDragResize(event.GetPosition(), wxGridColumnOperations(), gridWindow);
+                    //BBS: add cursor mode for DoGridDragResize's paremeters
+                    DoGridDragResize(event.GetPosition(), wxGridColumnOperations(), gridWindow, WXGRID_CURSOR_RESIZE_COL);
                 break;
 
                 case WXGRID_CURSOR_SELECT_COL:
@@ -4708,11 +4710,13 @@ bool wxGrid::DoGridDragEvent(wxMouseEvent& event,
             return DoGridCellDrag(event, coords, isFirstDrag);
 
         case WXGRID_CURSOR_RESIZE_ROW:
-            DoGridDragResize(event.GetPosition(), wxGridRowOperations(), gridWindow);
+            //BBS: add cursor mode for DoGridDragResize's paremeters
+            DoGridDragResize(event.GetPosition(), wxGridRowOperations(), gridWindow, WXGRID_CURSOR_RESIZE_ROW);
             break;
 
         case WXGRID_CURSOR_RESIZE_COL:
-            DoGridDragResize(event.GetPosition(), wxGridColumnOperations(), gridWindow);
+            //BBS: add cursor mode for DoGridDragResize's paremeters
+            DoGridDragResize(event.GetPosition(), wxGridColumnOperations(), gridWindow, WXGRID_CURSOR_RESIZE_COL);
             break;
 
         default:
@@ -4803,6 +4807,8 @@ wxGrid::DoGridCellLeftDown(wxMouseEvent& event,
                             case wxGridSelectCells:
                             case wxGridSelectRowsOrColumns:
                                 // nothing to do in these cases
+                                //BBS: select this cell when first click
+                                m_selection->SelectBlock(coords.GetRow(), coords.GetCol(), coords.GetRow(), coords.GetCol(), event);
                                 break;
 
                             case wxGridSelectRows:
@@ -5044,9 +5050,11 @@ void wxGrid::ProcessGridCellMouseEvent(wxMouseEvent& event, wxGridWindow *eventG
     }
 }
 
+//BBS: add cursor mode for DoGridDragResize's paremeters
 void wxGrid::DoGridDragResize(const wxPoint& position,
                               const wxGridOperations& oper,
-                              wxGridWindow* gridWindow)
+                              wxGridWindow* gridWindow,
+                              CursorMode mode)
 {
     // Get the logical position from the physical one we're passed.
     const wxPoint
@@ -5056,10 +5064,28 @@ void wxGrid::DoGridDragResize(const wxPoint& position,
     // orthogonal direction.
     const int linePos = oper.Dual().Select(logicalPos);
 
-    const int lineStart = oper.GetLineStartPos(this, m_dragRowOrCol);
-    oper.SetLineSize(this, m_dragRowOrCol,
+    //BBS: add logic for resize multiplexed cols
+    if (mode == WXGRID_CURSOR_RESIZE_COL) {
+        int col_to_resize = m_dragRowOrCol;
+        int num_rows, num_cols;
+        this->GetCellSize(0, m_dragRowOrCol, &num_rows, &num_cols);
+        if (num_cols < 1)
+            col_to_resize = m_dragRowOrCol - 1;
+
+        const int lineEnd = oper.GetLineEndPos(this, m_dragRowOrCol);
+        const int lineSize = oper.GetLineSize(this, col_to_resize);
+        int size = linePos - lineEnd + lineSize;
+        oper.SetLineSize(this, col_to_resize,
+                     wxMax(size,
+                           oper.GetMinimalLineSize(this, col_to_resize)));
+    }
+    else {
+        const int lineStart = oper.GetLineStartPos(this, m_dragRowOrCol);
+
+        oper.SetLineSize(this, m_dragRowOrCol,
                      wxMax(linePos - lineStart,
                            oper.GetMinimalLineSize(this, m_dragRowOrCol)));
+    }
 
     // TODO: generate RESIZING event, see #10754, if the size has changed.
 }
@@ -5082,7 +5108,8 @@ wxPoint wxGrid::GetPositionForResizeEvent(int width) const
 
 void wxGrid::DoEndDragResizeRow(const wxMouseEvent& event, wxGridWindow* gridWindow)
 {
-    DoGridDragResize(event.GetPosition(), wxGridRowOperations(), gridWindow);
+    //BBS: add cursor mode for DoGridDragResize's paremeters
+    DoGridDragResize(event.GetPosition(), wxGridRowOperations(), gridWindow, WXGRID_CURSOR_RESIZE_ROW);
 
     SendGridSizeEvent(wxEVT_GRID_ROW_SIZE, m_dragRowOrCol, -1, event);
 
@@ -5091,7 +5118,8 @@ void wxGrid::DoEndDragResizeRow(const wxMouseEvent& event, wxGridWindow* gridWin
 
 void wxGrid::DoEndDragResizeCol(const wxMouseEvent& event, wxGridWindow* gridWindow)
 {
-    DoGridDragResize(event.GetPosition(), wxGridColumnOperations(), gridWindow);
+    //BBS: add cursor mode for DoGridDragResize's paremeters
+    DoGridDragResize(event.GetPosition(), wxGridColumnOperations(), gridWindow, WXGRID_CURSOR_RESIZE_COL);
 
     SendGridSizeEvent(wxEVT_GRID_COL_SIZE, -1, m_dragRowOrCol, event);
 
@@ -5105,9 +5133,10 @@ void wxGrid::DoHeaderStartDragResizeCol(int col)
 
 void wxGrid::DoHeaderDragResizeCol(int width)
 {
+    //BBS: add cursor mode for DoGridDragResize's paremeters
     DoGridDragResize(GetPositionForResizeEvent(width),
                      wxGridColumnOperations(),
-                     m_gridWin);
+                     m_gridWin, WXGRID_CURSOR_RESIZE_COL);
 }
 
 void wxGrid::DoHeaderEndDragResizeCol(int width)
@@ -5891,6 +5920,10 @@ void wxGrid::OnKeyDown( wxKeyEvent& event )
                     DisableCellEditControl();
 
                     MoveCursorDown( event.ShiftDown() );
+                    //BBS: select this cell when first click
+                    m_selection->SelectBlock(m_currentCellCoords.GetRow(), m_currentCellCoords.GetCol(),
+                                             m_currentCellCoords.GetRow(), m_currentCellCoords.GetCol(),
+                                             event);
                 }
                 break;
 

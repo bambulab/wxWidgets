@@ -91,10 +91,10 @@ private:
     // the one and only one tooltip control we use - never access it directly
     // but use GetToolTipCtrl() which will create it when needed
     static WXHWND ms_hwndTT;
-
+public:
     // create the tooltip ctrl if it doesn't exist yet and return its HWND
     static WXHWND GetToolTipCtrl();
-
+private:
     // to be used in wxModule for deleting tooltip ctrl window when exiting mainloop
     static void DeleteToolTipCtrl();
 

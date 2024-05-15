@@ -156,12 +156,19 @@ void wxBitmapComboBox::RecreateControl()
 
     wxComboBox::DoClear();
 
-    HWND hwnd = GetHwnd();
+    WNDPROC wndproc_edit = nullptr;
+	WinStruct<COMBOBOXINFO> combobox_info;
+	HWND hwnd = GetHwnd();
+if (::GetComboBoxInfo(hwnd, &combobox_info))
+		wndproc_edit = (WNDPROC)wxGetWindowProc(combobox_info.hwndItem);
     DissociateHandle();
     ::DestroyWindow(hwnd);
 
     if ( !MSWCreateControl(wxT("COMBOBOX"), wxEmptyString, pos, size) )
         return;
+
+if (::GetComboBoxInfo(GetHwnd(), &combobox_info))
+    wxSetWindowProc(combobox_info.hwndItem, wndproc_edit);
 
     // initialize the controls contents
     for ( i = 0; i < numItems; i++ )

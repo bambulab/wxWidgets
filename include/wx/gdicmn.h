@@ -38,6 +38,7 @@ class WXDLLIMPEXP_FWD_CORE wxRegion;
 class WXDLLIMPEXP_FWD_BASE wxString;
 class WXDLLIMPEXP_FWD_CORE wxIconBundle;
 class WXDLLIMPEXP_FWD_CORE wxPoint;
+class WXDLLIMPEXP_FWD_CORE wxWindow;
 
 // ---------------------------------------------------------------------------
 // constants
@@ -1092,7 +1093,9 @@ extern int WXDLLIMPEXP_CORE wxDisplayDepth();
 
 // get the display size
 extern void WXDLLIMPEXP_CORE wxDisplaySize(int *width, int *height);
+extern void WXDLLIMPEXP_CORE wxDisplaySize(const wxWindow *window, int *width, int *height);
 extern wxSize WXDLLIMPEXP_CORE wxGetDisplaySize();
+extern wxSize WXDLLIMPEXP_CORE wxGetDisplaySize(const wxWindow *window);
 extern void WXDLLIMPEXP_CORE wxDisplaySizeMM(int *width, int *height);
 extern wxSize WXDLLIMPEXP_CORE wxGetDisplaySizeMM();
 extern wxSize WXDLLIMPEXP_CORE wxGetDisplayPPI();
