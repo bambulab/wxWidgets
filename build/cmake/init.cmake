@@ -492,9 +492,6 @@ if(wxUSE_GUI)
 
         set(wxUSE_GSTREAMER ${GSTREAMER_FOUND})
         set(wxUSE_GSTREAMER_PLAYER OFF)
-        if(GSTREAMER_PLAYER_INCLUDE_DIRS)
-            set(wxUSE_GSTREAMER_PLAYER ON)
-        endif()
 
         if(NOT GSTREAMER_FOUND)
             message(WARNING "GStreamer not found, wxMediaCtrl won't be available")
