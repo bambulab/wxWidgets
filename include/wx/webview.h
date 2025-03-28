@@ -168,6 +168,9 @@ public:
     static bool IsBackendAvailable(const wxString& backend);
     static wxVersionInfo GetBackendVersionInfo(const wxString& backend = wxASCII_STR(wxWebViewBackendDefault));
 
+    // User data path for storing cookies and other data for wxWebViewEdge
+    virtual void SetUserDataPathOption(const wxString&) {};
+
     // General methods
     virtual void EnableContextMenu(bool enable = true)
     {
