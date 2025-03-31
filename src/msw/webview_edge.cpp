@@ -91,7 +91,8 @@ bool wxWebViewEdgeImpl::Create()
     m_historyEnabled = true;
     m_historyPosition = -1;
 
-    wxString userDataPath = wxStandardPaths::Get().GetUserLocalDataDir();
+    wxString userDataPath = m_customUserDataPath.empty() ? wxStandardPaths::Get().GetUserLocalDataDir() : m_customUserDataPath;
+
 #ifdef __VISUALC__
     auto options =
         Make<CoreWebView2EnvironmentOptions>();
@@ -804,6 +805,11 @@ bool wxWebViewEdge::SetUserAgent(const wxString& userAgent)
     // TODO: As of Edge SDK 1.0.790 an experimental API to set the user agent
     // is available. Reimplement using m_impl->GetSettings() when it's stable.
 }
+
+void wxWebViewEdge::SetUserDataPathOption(const wxString& path)
+{
+    m_impl->m_customUserDataPath = path;
+};
 
 void* wxWebViewEdge::GetNativeBackend() const
 {
