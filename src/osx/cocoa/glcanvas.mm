@@ -110,8 +110,13 @@ WXGLPixelFormat WXGLChoosePixelFormat(const int *GLAttrs,
     return [[NSOpenGLPixelFormat alloc] initWithAttributes:(NSOpenGLPixelFormatAttribute*) attribs];
 }
 
-@interface wxNSCustomOpenGLView : NSOpenGLView
+@interface wxNSCustomOpenGLView : NSOpenGLView <NSTextInputClient>
 {
+    // Composition (marked text) state so CJK/Korean IME can compose inline
+    // instead of committing each keystroke as a separate character.
+    NSString* m_markedText;
+    NSRange   m_markedRange;
+    NSRange   m_selectedRange;
 }
 
 @end
@@ -126,6 +131,24 @@ WXGLPixelFormat WXGLChoosePixelFormat(const int *GLAttrs,
         initialized = YES;
         wxOSXCocoaClassAddWXMethods( self );
     }
+}
+
+- (id)initWithFrame:(NSRect)frameRect
+{
+    self = [super initWithFrame:frameRect];
+    if ( self )
+    {
+        m_markedText    = nil;
+        m_markedRange   = NSMakeRange(NSNotFound, 0);
+        m_selectedRange = NSMakeRange(0, 0);
+    }
+    return self;
+}
+
+- (void)dealloc
+{
+    [m_markedText release];
+    [super dealloc];
 }
 
 - (BOOL)isOpaque
@@ -152,6 +175,100 @@ WXGLPixelFormat WXGLChoosePixelFormat(const int *GLAttrs,
     // Prevent the NSOpenGLView from making it's own context
     // We want to force using wxGLContexts
     return NULL;
+}
+
+// ---- NSTextInputClient: real marked-text (composition) support ----
+// The stock wxWidgets custom-view text-input methods are stubs (hasMarkedText
+// always NO), so macOS input methods cannot hold a composing syllable and
+// commit each jamo separately ("ㄱㅏ" instead of "가"). Implementing the
+// marked-text protocol here lets the IME compose inline and deliver finished
+// syllables through insertText:.
+
+extern void wxOSX_insertText(NSView* self, SEL _cmd, NSString* text);
+
+- (void)insertText:(id)aString replacementRange:(NSRange)replacementRange
+{
+    (void)replacementRange;
+    NSString* text = [aString isKindOfClass:[NSAttributedString class]] ? [aString string] : aString;
+    // Committing text ends any active composition.
+    [m_markedText release];
+    m_markedText  = nil;
+    m_markedRange = NSMakeRange(NSNotFound, 0);
+    if ( text != nil && [text length] > 0 )
+        wxOSX_insertText(self, @selector(insertText:), text);
+}
+
+- (void)setMarkedText:(id)aString selectedRange:(NSRange)selectedRange replacementRange:(NSRange)replacementRange
+{
+    (void)replacementRange;
+    NSString* text = [aString isKindOfClass:[NSAttributedString class]] ? [aString string] : aString;
+    [m_markedText release];
+    if ( text == nil || [text length] == 0 )
+    {
+        m_markedText  = nil;
+        m_markedRange = NSMakeRange(NSNotFound, 0);
+    }
+    else
+    {
+        m_markedText    = [text copy];
+        m_markedRange   = NSMakeRange(0, [text length]);
+        m_selectedRange = selectedRange;
+    }
+}
+
+- (void)unmarkText
+{
+    [m_markedText release];
+    m_markedText  = nil;
+    m_markedRange = NSMakeRange(NSNotFound, 0);
+}
+
+- (BOOL)hasMarkedText
+{
+    return m_markedRange.location != NSNotFound;
+}
+
+- (NSRange)markedRange
+{
+    return m_markedRange;
+}
+
+- (NSRange)selectedRange
+{
+    return m_selectedRange;
+}
+
+- (NSAttributedString *)attributedSubstringForProposedRange:(NSRange)aRange actualRange:(NSRangePointer)actualRange
+{
+    (void)actualRange;
+    if ( m_markedText == nil )
+        return nil;
+    NSString* sub = m_markedText;
+    if ( aRange.location != NSNotFound && NSMaxRange(aRange) <= [m_markedText length] )
+        sub = [m_markedText substringWithRange:aRange];
+    return [[[NSAttributedString alloc] initWithString:sub] autorelease];
+}
+
+- (NSArray*)validAttributesForMarkedText
+{
+    return [NSArray array];
+}
+
+- (NSRect)firstRectForCharacterRange:(NSRange)aRange actualRange:(NSRangePointer)actualRange
+{
+    (void)aRange;
+    (void)actualRange;
+    // Anchor the IME candidate window to the view in screen coordinates.
+    NSRect r = [self convertRect:[self bounds] toView:nil];
+    r = [[self window] convertRectToScreen:r];
+    r.size = NSMakeSize(1, 16);
+    return r;
+}
+
+- (NSUInteger)characterIndexForPoint:(NSPoint)aPoint
+{
+    (void)aPoint;
+    return NSNotFound;
 }
 
 @end
