@@ -891,8 +891,11 @@ bool wxWebViewEdge::RunScript(const wxString& javascript, wxString* output) cons
     return true;
 }
 
-bool wxWebViewEdge::AddScriptMessageHandler(const wxString& name)
+bool wxWebViewEdge::AddScriptMessageHandler(const wxString& name, bool runScriptSync)
 {
+    // Edge registers the handler natively (UpdateWebMessageHandler) and never
+    // uses a synchronous RunScript() for it, so runScriptSync has no effect here.
+    wxUnusedVar(runScriptSync);
     // Edge only supports a single message handler
     if (!m_impl->m_scriptMsgHandlerName.empty())
         return false;

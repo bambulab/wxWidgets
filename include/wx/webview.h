@@ -195,8 +195,14 @@ public:
 
     // Script
     virtual bool RunScript(const wxString& javascript, wxString* output = NULL) const = 0;
-    virtual bool AddScriptMessageHandler(const wxString& name)
-    { wxUnusedVar(name); return false; }
+    // runScriptSync controls how the handler's bootstrap script is injected into
+    // the *currently* loaded document. When true (default) the backend may use a
+    // synchronous RunScript(); when false it must inject asynchronously. The async
+    // mode avoids a hang on macOS where RunScriptSync() spins wxYield() waiting for
+    // an evaluateJavaScript completion handler that never fires while the WKWebView
+    // is off-screen / in a throttled WebContent process.
+    virtual bool AddScriptMessageHandler(const wxString& name, bool runScriptSync = true)
+    { wxUnusedVar(name); wxUnusedVar(runScriptSync); return false; }
     virtual bool RemoveScriptMessageHandler(const wxString& name)
     { wxUnusedVar(name); return false; }
     virtual bool AddUserScript(const wxString& javascript,

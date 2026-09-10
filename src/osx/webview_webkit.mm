@@ -443,15 +443,31 @@ bool wxWebViewWebKit::RunScript(const wxString& javascript, wxString* output) co
     return true;
 }
 
-bool wxWebViewWebKit::AddScriptMessageHandler(const wxString& name)
+bool wxWebViewWebKit::AddScriptMessageHandler(const wxString& name, bool runScriptSync)
 {
     [m_webView.configuration.userContentController addScriptMessageHandler:
         [[WebViewScriptMessageHandler alloc] initWithWxWindow:this] name:wxCFStringRef(name).AsNSString()];
     // Make webkit message handler available under common name
     wxString js = wxString::Format("window.%s = window.webkit.messageHandlers.%s;",
-            name, name);
+                                   name, name);
+    // AddUserScript() injects the alias into every *future* document load. The
+    // call below is only needed to expose it in the document that is already
+    // loaded (if any).
     AddUserScript(js);
-    RunScript(js);
+    if (runScriptSync)
+    {
+        RunScript(js);
+    }
+    else
+    {
+        // Asynchronous injection: RunScript() -> RunScriptSync() busy-waits with
+        // while(!done) wxYield() for evaluateJavaScript's completion handler. When
+        // this view is off-screen / in a background tab, macOS can throttle or
+        // suspend its WebContent process so that handler never fires, hanging the
+        // main thread. Inject without blocking instead.
+        [m_webView evaluateJavaScript:wxCFStringRef(js).AsNSString()
+                    completionHandler:nil];
+    }
     return true;
 }
 

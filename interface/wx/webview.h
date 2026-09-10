@@ -763,16 +763,24 @@ public:
         @endcode
 
         @param name Name of the message handler that can be used from javascript
+        @param runScriptSync If @true (default) the handler's bootstrap alias is
+            injected into the currently loaded document with a synchronous
+            RunScript(). If @false it is injected asynchronously; use this on the
+            macOS/WebKit backend to avoid a main-thread hang when the view is
+            off-screen and its WebContent process is throttled, which makes the
+            synchronous RunScriptSync() busy-wait never complete.
         @return @true if the handler could be added, @false if it could not be added.
 
         @see RemoveScriptMessageHandler()
 
         @note The Edge backend only supports a single message handler and
             the IE backend does not support script message handlers.
+            The @a runScriptSync parameter only affects the macOS/WebKit and
+            GTK/WebKit2 backends.
 
         @since 3.1.5
     */
-    virtual bool AddScriptMessageHandler(const wxString& name);
+    virtual bool AddScriptMessageHandler(const wxString& name, bool runScriptSync = true);
 
     /**
         Remove a script message handler with the given name that was previously added via

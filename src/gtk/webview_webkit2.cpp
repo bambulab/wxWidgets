@@ -1318,7 +1318,7 @@ bool wxWebViewWebKit::RunScript(const wxString& javascript, wxString* output) co
     return true;
 }
 
-bool wxWebViewWebKit::AddScriptMessageHandler(const wxString& name)
+bool wxWebViewWebKit::AddScriptMessageHandler(const wxString& name, bool runScriptSync)
 {
     if (!m_web_view)
         return false;
@@ -1333,7 +1333,11 @@ bool wxWebViewWebKit::AddScriptMessageHandler(const wxString& name)
         wxString js = wxString::Format("window.%s = window.webkit.messageHandlers.%s;",
                 name, name);
         AddUserScript(js);
-        RunScript(js);
+        // AddUserScript() covers future loads; RunScript() injects into the
+        // already-loaded document. Skip it in async mode for parity with the
+        // macOS backend (see wxWebView::AddScriptMessageHandler docs).
+        if (runScriptSync)
+            RunScript(js);
     }
 
     return res;
