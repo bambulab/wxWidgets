@@ -32,13 +32,14 @@ class WXDLLIMPEXP_WEBVIEW wxWebViewWebKit : public wxWebView
 public:
     wxDECLARE_DYNAMIC_CLASS(wxWebViewWebKit);
 
-    wxWebViewWebKit() {}
+    wxWebViewWebKit() : m_nonPersistentWebsiteDataStore(false) {}
     wxWebViewWebKit(wxWindow *parent,
                     wxWindowID winID = wxID_ANY,
                     const wxString& strURL = wxASCII_STR(wxWebViewDefaultURLStr),
                     const wxPoint& pos = wxDefaultPosition,
                     const wxSize& size = wxDefaultSize, long style = 0,
                     const wxString& name = wxASCII_STR(wxWebViewNameStr))
+        : m_nonPersistentWebsiteDataStore(false)
     {
         Create(parent, winID, strURL, pos, size, style, name);
     }
@@ -75,6 +76,18 @@ public:
     virtual void EnableAccessToDevTools(bool enable = true) wxOVERRIDE;
     virtual bool SetUserAgent(const wxString& userAgent) wxOVERRIDE;
 
+    // Per-instance website data isolation for dual Studio processes.
+    // On macOS this maps to WKWebsiteDataStore (identifier on 14+,
+    // non-persistent fallback for secondary instances on older OS), not a
+    // custom filesystem path like WebView2's UserDataFolder.
+    virtual void SetUserDataPathOption(const wxString& path) wxOVERRIDE;
+
+    // Force WKWebsiteDataStore.nonPersistentDataStore (in-memory, not shared
+    // with the default store). Takes precedence over SetUserDataPathOption.
+    // Must be called before Create().
+    virtual void SetNonPersistentWebsiteDataStore(bool enable = true) wxOVERRIDE;
+    virtual bool IsNonPersistentWebsiteDataStore() const wxOVERRIDE;
+
     //History functions
     virtual void ClearHistory() wxOVERRIDE;
     virtual void EnableHistory(bool enable = true) wxOVERRIDE;
@@ -96,6 +109,7 @@ public:
 
     bool RunScript(const wxString& javascript, wxString* output = NULL) const wxOVERRIDE;
     virtual bool AddScriptMessageHandler(const wxString& name) wxOVERRIDE;
+    virtual bool AddScriptMessageHandler(const wxString& name, bool runScriptSync) wxOVERRIDE;
     virtual bool RemoveScriptMessageHandler(const wxString& name) wxOVERRIDE;
     virtual bool AddUserScript(const wxString& javascript,
         wxWebViewUserScriptInjectionTime injectionTime = wxWEBVIEW_INJECT_AT_DOCUMENT_START) wxOVERRIDE;
@@ -115,6 +129,8 @@ private:
     OSXWebViewPtr m_webView;
     wxStringToWebHandlerMap m_handlers;
     wxString m_customUserAgent;
+    wxString m_customUserDataPath;
+    bool m_nonPersistentWebsiteDataStore;
 
     WX_NSObject m_navigationDelegate;
     WX_NSObject m_UIDelegate;

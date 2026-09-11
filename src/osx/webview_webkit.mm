@@ -29,9 +29,11 @@
 
 #include "wx/hashmap.h"
 #include "wx/filesys.h"
+#include "wx/filename.h"
 #include "wx/msgdlg.h"
 #include "wx/textdlg.h"
 #include "wx/filedlg.h"
+#include "wx/log.h"
 
 #include <WebKit/WebKit.h>
 #include <Foundation/NSURLError.h>
@@ -48,6 +50,83 @@ wxIMPLEMENT_DYNAMIC_CLASS(wxWebViewWebKit, wxWebView);
 
 wxBEGIN_EVENT_TABLE(wxWebViewWebKit, wxControl)
 wxEND_EVENT_TABLE()
+
+namespace
+{
+
+// Last path component is the instance slot created by Studio
+// (…/WebViewCache/0, …/WebViewCache/1, …).
+long wxWebViewWebKitSlotFromPath(const wxString& path)
+{
+    if (path.empty())
+        return 0;
+
+    wxFileName fn(path);
+    long slot = 0;
+    if (!fn.GetFullName().ToLong(&slot))
+        slot = 0;
+    return slot;
+}
+
+WKWebsiteDataStore* wxWebViewWebKitDataStoreForPath(const wxString& path,
+                                                    bool forceNonPersistent)
+{
+    if (forceNonPersistent)
+    {
+        wxLogMessage("wxWebViewWebKit: using nonPersistentDataStore (explicit request)");
+        return [WKWebsiteDataStore nonPersistentDataStore];
+    }
+
+    if (path.empty())
+        return [WKWebsiteDataStore defaultDataStore];
+
+    const long slot = wxWebViewWebKitSlotFromPath(path);
+
+#if defined(__MAC_OS_X_VERSION_MAX_ALLOWED) && __MAC_OS_X_VERSION_MAX_ALLOWED >= 140000
+    if (WX_IS_MACOS_AVAILABLE(14, 0))
+    {
+        NSString* dir = wxCFStringRef(path).AsNSString();
+        NSString* uuidPath = [dir stringByAppendingPathComponent:@"webview_store.uuid"];
+        NSString* uuidStr = [NSString stringWithContentsOfFile:uuidPath
+                                                     encoding:NSUTF8StringEncoding
+                                                        error:nil];
+        NSUUID* uuid = nil;
+        if (uuidStr.length > 0)
+            uuid = [[NSUUID alloc] initWithUUIDString:uuidStr];
+        if (!uuid)
+        {
+            uuid = [NSUUID UUID];
+            [[NSFileManager defaultManager] createDirectoryAtPath:dir
+                                     withIntermediateDirectories:YES
+                                                      attributes:nil
+                                                           error:nil];
+            [[uuid UUIDString] writeToFile:uuidPath
+                                atomically:YES
+                                  encoding:NSUTF8StringEncoding
+                                     error:nil];
+        }
+        wxLogMessage("wxWebViewWebKit: using persistent data store slot=%ld uuid=%s",
+                     slot,
+                     (const char*)wxCFStringRef([uuid UUIDString]).AsString().utf8_str());
+        return [WKWebsiteDataStore dataStoreForIdentifier:uuid];
+    }
+#endif // macOS 14 SDK
+
+    // macOS < 14: only one persistent store exists. Keep slot 0 on the default
+    // store for single-instance cookie continuity; secondary instances use a
+    // non-persistent store so they do not fight over defaultDataStore.
+    if (slot == 0)
+    {
+        wxLogMessage("wxWebViewWebKit: macOS < 14 slot 0 using defaultDataStore");
+        return [WKWebsiteDataStore defaultDataStore];
+    }
+
+    wxLogMessage("wxWebViewWebKit: macOS < 14 slot=%ld using nonPersistentDataStore",
+                 slot);
+    return [WKWebsiteDataStore nonPersistentDataStore];
+}
+
+} // namespace
 
 @interface WXWKWebView: WKWebView
 {
@@ -123,6 +202,10 @@ bool wxWebViewWebKit::Create(wxWindow *parent,
 
     NSRect r = wxOSXGetFrameForControl( this, pos , size ) ;
     WKWebViewConfiguration* webViewConfig = [[WKWebViewConfiguration alloc] init];
+
+    webViewConfig.websiteDataStore =
+        wxWebViewWebKitDataStoreForPath(m_customUserDataPath,
+                                        m_nonPersistentWebsiteDataStore);
 
     // WebKit API available since macOS 10.11 and iOS 9.0
     SEL fullScreenSelector = @selector(_setFullScreenEnabled:);
@@ -346,6 +429,24 @@ bool wxWebViewWebKit::SetUserAgent(const wxString& userAgent)
         return false;
 }
 
+void wxWebViewWebKit::SetUserDataPathOption(const wxString& path)
+{
+    // Must be called before Create(); Create() consumes m_customUserDataPath
+    // when building WKWebViewConfiguration.websiteDataStore.
+    m_customUserDataPath = path;
+}
+
+void wxWebViewWebKit::SetNonPersistentWebsiteDataStore(bool enable)
+{
+    // Must be called before Create(); takes precedence over SetUserDataPathOption.
+    m_nonPersistentWebsiteDataStore = enable;
+}
+
+bool wxWebViewWebKit::IsNonPersistentWebsiteDataStore() const
+{
+    return m_nonPersistentWebsiteDataStore;
+}
+
 void wxWebViewWebKit::SetZoomType(wxWebViewZoomType zoomType)
 {
     // there is only one supported zoom type at the moment so this setter
@@ -445,13 +546,34 @@ bool wxWebViewWebKit::RunScript(const wxString& javascript, wxString* output) co
 
 bool wxWebViewWebKit::AddScriptMessageHandler(const wxString& name)
 {
+    return AddScriptMessageHandler(name, true);
+}
+
+bool wxWebViewWebKit::AddScriptMessageHandler(const wxString& name, bool runScriptSync)
+{
     [m_webView.configuration.userContentController addScriptMessageHandler:
         [[WebViewScriptMessageHandler alloc] initWithWxWindow:this] name:wxCFStringRef(name).AsNSString()];
     // Make webkit message handler available under common name
     wxString js = wxString::Format("window.%s = window.webkit.messageHandlers.%s;",
-            name, name);
+                                   name, name);
+    // AddUserScript() injects the alias into every *future* document load. The
+    // call below is only needed to expose it in the document that is already
+    // loaded (if any).
     AddUserScript(js);
-    RunScript(js);
+    if (runScriptSync)
+    {
+        RunScript(js);
+    }
+    else
+    {
+        // Asynchronous injection: RunScript() -> RunScriptSync() busy-waits with
+        // while(!done) wxYield() for evaluateJavaScript's completion handler. When
+        // this view is off-screen / in a background tab, macOS can throttle or
+        // suspend its WebContent process so that handler never fires, hanging the
+        // main thread. Inject without blocking instead.
+        [m_webView evaluateJavaScript:wxCFStringRef(js).AsNSString()
+                    completionHandler:nil];
+    }
     return true;
 }
 

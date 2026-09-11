@@ -775,6 +775,28 @@ public:
     virtual bool AddScriptMessageHandler(const wxString& name);
 
     /**
+        Same as AddScriptMessageHandler(const wxString& name) with an extra flag
+        controlling how the handler bootstrap script is injected into the currently
+        loaded document.
+
+        @param name Name of the message handler that can be used from javascript
+        @param runScriptSync If @true the alias is injected with a synchronous
+            RunScript(). If @false it is injected asynchronously. Currently only
+            the macOS/WebKit backend honours @false; other backends ignore the flag
+            and behave like the single-argument overload. Use @false on macOS to
+            avoid a main-thread hang when the view is off-screen and its WebContent
+            process is throttled, which makes the synchronous RunScriptSync()
+            busy-wait never complete.
+
+        @return @true if the handler could be added, @false if it could not be added.
+
+        @see AddScriptMessageHandler(const wxString& name)
+
+        @since 3.1.5
+    */
+    virtual bool AddScriptMessageHandler(const wxString& name, bool runScriptSync);
+
+    /**
         Remove a script message handler with the given name that was previously added via
         AddScriptMessageHandler().
 

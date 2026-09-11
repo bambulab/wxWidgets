@@ -171,6 +171,12 @@ public:
     // User data path for storing cookies and other data for wxWebViewEdge
     virtual void SetUserDataPathOption(const wxString&) {};
 
+    // Request a non-persistent website data store (macOS WKWebView:
+    // WKWebsiteDataStore.nonPersistentDataStore). No-op on backends that
+    // do not support it. Must be called before Create().
+    virtual void SetNonPersistentWebsiteDataStore(bool WXUNUSED(enable) = true) {}
+    virtual bool IsNonPersistentWebsiteDataStore() const { return false; }
+
     // General methods
     virtual void EnableContextMenu(bool enable = true)
     {
@@ -197,6 +203,18 @@ public:
     virtual bool RunScript(const wxString& javascript, wxString* output = NULL) const = 0;
     virtual bool AddScriptMessageHandler(const wxString& name)
     { wxUnusedVar(name); return false; }
+    // Optional second argument: when false, backends that support it inject the
+    // handler's bootstrap script asynchronously. Currently only the macOS/WebKit
+    // backend overrides this; the default implementation ignores the flag and
+    // falls back to the single-argument overload (GTK/Edge unchanged).
+    // Use async mode on macOS to avoid a hang when RunScriptSync() spins
+    // wxYield() waiting for evaluateJavaScript while the WKWebView is
+    // off-screen / in a throttled WebContent process.
+    virtual bool AddScriptMessageHandler(const wxString& name, bool runScriptSync)
+    {
+        wxUnusedVar(runScriptSync);
+        return AddScriptMessageHandler(name);
+    }
     virtual bool RemoveScriptMessageHandler(const wxString& name)
     { wxUnusedVar(name); return false; }
     virtual bool AddUserScript(const wxString& javascript,
