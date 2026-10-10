@@ -543,6 +543,7 @@ protected:
 
     /// Ends a resize action, or for live update, resizes the sash
     bool DoEndResizeAction(wxMouseEvent& event);
+    void DoPendingLiveResize();
 
     void SetActivePane(wxWindow* active_pane);
 
@@ -605,6 +606,12 @@ protected:
     int  m_currentDragItem;
     bool m_skipping;
     bool m_hasMaximized;
+
+    // Live resize under Wayland: the most recent motion event, applied by
+    // DoPendingLiveResize() once the pending motion events have been
+    // dispatched, so that each relayout uses the latest pointer position.
+    wxMouseEvent m_pendingResizeEvent;
+    bool m_resizeUpdatePending;
 
     double m_dockConstraintX;  // 0.0 .. 1.0; max pct of window width a dock can consume
     double m_dockConstraintY;  // 0.0 .. 1.0; max pct of window height a dock can consume
