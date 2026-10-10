@@ -42,6 +42,25 @@
 
 WX_CHECK_BUILD_OPTIONS("wxAUI")
 
+#ifdef __WXGTK3__
+    #include "wx/gtk/private/wrapgtk.h"
+    #ifdef GDK_WINDOWING_WAYLAND
+        #include <gdk/gdkwayland.h>
+    #endif
+#endif
+
+// Under Wayland, wxWindow::Update() is a blocking round trip to the
+// compositor and nothing drawn synchronously is shown before the next frame
+// anyhow, so live resizing must avoid it.
+static bool wxAuiIsWaylandDisplay()
+{
+#if defined(__WXGTK3__) && defined(GDK_WINDOWING_WAYLAND)
+    return GDK_IS_WAYLAND_DISPLAY(gdk_display_get_default());
+#else
+    return false;
+#endif
+}
+
 #include "wx/arrimpl.cpp"
 WX_DECLARE_OBJARRAY(wxRect, wxAuiRectArray);
 WX_DEFINE_OBJARRAY(wxAuiRectArray)
@@ -616,6 +635,7 @@ wxAuiManager::wxAuiManager(wxWindow* managed_wnd, unsigned int flags)
     m_flags = flags;
     m_skipping = false;
     m_hasMaximized = false;
+    m_resizeUpdatePending = false;
     m_frame = NULL;
     m_dockConstraintX = 0.3;
     m_dockConstraintY = 0.3;
@@ -2675,7 +2695,8 @@ void wxAuiManager::Update()
             if (p.rect != old_pane_rects[i])
             {
                 p.window->Refresh();
-                p.window->Update();
+                if (!wxAuiIsWaylandDisplay())
+                    p.window->Update();
             }
         }
     }
@@ -4207,6 +4228,24 @@ void wxAuiManager::OnLeftDown(wxMouseEvent& event)
 }
 
 /// Ends a resize action, or for live update, resizes the sash
+void wxAuiManager::DoPendingLiveResize()
+{
+    m_resizeUpdatePending = false;
+
+    // The drag may have ended in the meantime; OnLeftUp() then already did
+    // the final resize.
+    if (m_action != actionResize)
+        return;
+
+    // m_actionPart is invalidated by the Update() done for the previous step.
+    if (m_currentDragItem != -1)
+        m_actionPart = & (m_uiParts.Item(m_currentDragItem));
+    if (!m_actionPart)
+        return;
+
+    DoEndResizeAction(m_pendingResizeEvent);
+}
+
 bool wxAuiManager::DoEndResizeAction(wxMouseEvent& event)
 {
     // resize the dock or the pane
@@ -4585,9 +4624,26 @@ void wxAuiManager::OnMotion(wxMouseEvent& event)
 
             if (HasLiveResize())
             {
-                m_frame->ReleaseMouse();
-                DoEndResizeAction(event);
-                m_frame->CaptureMouse();
+                if (wxAuiIsWaylandDisplay())
+                {
+                    // Coalesce motion events: every resize step relayouts the
+                    // whole frame, and Wayland delivers far more motion events
+                    // than X11 (no motion hints). Keep the mouse captured, as
+                    // releasing it lets the events of this step reach the
+                    // window under the pointer.
+                    m_pendingResizeEvent = event;
+                    if (!m_resizeUpdatePending)
+                    {
+                        m_resizeUpdatePending = true;
+                        CallAfter(&wxAuiManager::DoPendingLiveResize);
+                    }
+                }
+                else
+                {
+                    m_frame->ReleaseMouse();
+                    DoEndResizeAction(event);
+                    m_frame->CaptureMouse();
+                }
             }
             else
             {
