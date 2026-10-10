@@ -34,7 +34,14 @@ static gboolean draw(GtkWidget* widget, cairo_t* cr, wxGLCanvas* win)
         // GLX buffers are apparently not reliably updated to the new size
         // before the paint event occurs, resulting in newly exposed window
         // areas sometimes not being painted at the end of a drag resize.
-        gdk_display_sync(gtk_widget_get_display(widget));
+        //
+        // This is an X11 workaround only: under Wayland gdk_display_sync()
+        // is a blocking round trip to the compositor, done on every draw
+        // while the canvas grows, which makes interactive resizing sluggish.
+#ifdef GDK_WINDOWING_X11
+        if (GDK_IS_X11_DISPLAY(gtk_widget_get_display(widget)))
+#endif
+            gdk_display_sync(gtk_widget_get_display(widget));
     }
     win->m_size.Set(a.width, a.height);
 
