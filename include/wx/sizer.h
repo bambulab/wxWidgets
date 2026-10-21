@@ -238,6 +238,9 @@ public:
     int GetFlags() const { return m_flags; }
     int GetBorderInPixels() const { return m_borderInPixels; }
 
+    // Disablee sizer flags (in)consistency asserts.
+    static void DisableConsistencyChecks();
+
 private:
 #ifdef wxNEEDS_BORDER_IN_PX
     static float DoGetDefaultBorderInPx();
@@ -846,24 +849,34 @@ protected:
     // of children (and the fixed number of rows/columns)
     int CalcCols() const
     {
+        // Check the count first because we shouldn't assert if the sizer is
+        // completely empty.
+        const int count = static_cast<int>(m_children.size());
+        if ( !count )
+            return 0;
+
         wxCHECK_MSG
         (
             m_rows, 0,
             "Can't calculate number of cols if number of rows is not specified"
         );
 
-        return int(m_children.GetCount() + m_rows - 1) / m_rows;
+        return (count + m_rows - 1) / m_rows;
     }
 
     int CalcRows() const
     {
+        const int count = static_cast<int>(m_children.size());
+        if ( !count )
+            return 0;
+
         wxCHECK_MSG
         (
             m_cols, 0,
             "Can't calculate number of cols if number of rows is not specified"
         );
 
-        return int(m_children.GetCount() + m_cols - 1) / m_cols;
+        return (count + m_cols - 1) / m_cols;
     }
 
 private:

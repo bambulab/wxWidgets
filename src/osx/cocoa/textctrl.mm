@@ -52,6 +52,20 @@
 - (void)setSelectable:(BOOL)flag;
 @end
 
+
+static BOOL HandleClipboardEvent(NSView *view, wxEventType type)
+{
+    wxWidgetImpl *impl = wxWidgetImpl::FindFromWXWidget(view);
+    wxWindow* wxpeer = impl ? impl->GetWXPeer() : NULL;
+    if ( wxpeer )
+    {
+        wxClipboardTextEvent evt(type, wxpeer->GetId());
+        evt.SetEventObject(wxpeer);
+        return wxpeer->HandleWindowEvent(evt);
+    }
+    return false;
+}
+
 // An object of this class is created before the text is modified
 // programmatically and destroyed as soon as this is done. It does several
 // things, like ensuring that the control is editable to allow setting its text
@@ -118,6 +132,7 @@ NSView* wxMacEditHelper::ms_viewCurrentlyEdited = nil;
     int maxLength;
     wxTextEntry* field;
     bool forceUpper;
+    bool replaceNewLine;
 }
 
 @end
@@ -130,6 +145,7 @@ NSView* wxMacEditHelper::ms_viewCurrentlyEdited = nil;
     {
         maxLength = 0;
         forceUpper = false;
+        replaceNewLine = true;
     }
     return self;
 }
@@ -137,6 +153,16 @@ NSView* wxMacEditHelper::ms_viewCurrentlyEdited = nil;
 - (void) setMaxLength:(int) maxlen
 {
     maxLength = maxlen;
+}
+
+- (void) replaceNewLine:(bool) enable
+{
+    replaceNewLine = enable;
+}
+
+- (bool) getReplaceNewLine
+{
+    return replaceNewLine;
 }
 
 - (void) forceUpper
@@ -177,7 +203,7 @@ NSView* wxMacEditHelper::ms_viewCurrentlyEdited = nil;
 
     // wxTextEntryFormatter is always associated with single-line text entry (through wxNSTextFieldControl)
     // so all new line characters should be replaced with spaces (like it is done in single-line NSCell).
-    NSString* lineStr = [*partialStringPtr stringByReplacingOccurrencesOfString: @"\n" withString: @" "];
+    NSString* lineStr = replaceNewLine ? [*partialStringPtr stringByReplacingOccurrencesOfString: @"\n" withString: @" "] : *partialStringPtr;
 
     NSString* newStr = forceUpper ? [lineStr uppercaseString] : lineStr;
 
@@ -374,6 +400,20 @@ NSView* wxMacEditHelper::ms_viewCurrentlyEdited = nil;
         [super flagsChanged:event];
 }
 
+- (void) rightMouseDown:(NSEvent*) event
+{
+    wxWidgetCocoaImpl* impl = (wxWidgetCocoaImpl* ) wxWidgetImpl::FindFromWXWidget( (WXWidget) [self delegate] );
+    if ( impl == NULL || !impl->DoHandleMouseEvent( event ) )
+        [super rightMouseDown:event];
+}
+
+- (void) rightMouseUp:(NSEvent*) event
+{
+    wxWidgetCocoaImpl* impl = (wxWidgetCocoaImpl* ) wxWidgetImpl::FindFromWXWidget( (WXWidget) [self delegate] );
+    if ( impl == NULL || !impl->DoHandleMouseEvent( event ) )
+        [super rightMouseUp:event];
+}
+
 - (void) insertText:(id) str
 {
     // We should never generate char events for the text being inserted
@@ -411,6 +451,23 @@ NSView* wxMacEditHelper::ms_viewCurrentlyEdited = nil;
     textField = field;
 }
 
+- (void)copy:(id)sender
+{
+    if ( !HandleClipboardEvent(textField, wxEVT_TEXT_COPY) )
+        [super copy:sender];
+}
+
+- (void)cut:(id)sender
+{
+    if ( !HandleClipboardEvent(textField, wxEVT_TEXT_CUT) )
+        [super cut:sender];
+}
+
+- (void)paste:(id)sender
+{
+    if ( !HandleClipboardEvent(textField, wxEVT_TEXT_PASTE) )
+        [super paste:sender];
+}
 
 @end
 
@@ -426,12 +483,33 @@ NSView* wxMacEditHelper::ms_viewCurrentlyEdited = nil;
     }
 }
 
+- (instancetype)initWithFrame:(NSRect)frameRect
+{
+    self = [super initWithFrame:frameRect];
+    if ( self )
+    {
+        self.undoManager = [[[NSUndoManager alloc] init] autorelease];
+    }
+    return self;
+}
+
+- (void)dealloc
+{
+    self.undoManager = nil;
+    [super dealloc];
+}
+
 - (void)textDidChange:(NSNotification *)aNotification
 {
     wxUnusedVar(aNotification);
     wxWidgetCocoaImpl* impl = (wxWidgetCocoaImpl* ) wxWidgetImpl::FindFromWXWidget( self );
     if ( impl )
         impl->controlTextDidChange();
+}
+
+- (nullable NSUndoManager *)undoManagerForTextView:(NSTextView *)view
+{
+    return self.undoManager;
 }
 
 
@@ -498,34 +576,21 @@ NSView* wxMacEditHelper::ms_viewCurrentlyEdited = nil;
     return NO;
 }
 
-- (BOOL)_handleClipboardEvent:(wxEventType)type
-{
-    wxWidgetImpl *impl = wxWidgetImpl::FindFromWXWidget(self);
-    wxWindow* wxpeer = impl ? impl->GetWXPeer() : NULL;
-    if ( wxpeer )
-    {
-        wxClipboardTextEvent evt(type, wxpeer->GetId());
-        evt.SetEventObject(wxpeer);
-        return wxpeer->HandleWindowEvent(evt);
-    }
-    return false;
-}
-
 - (void)copy:(id)sender
 {
-    if ( ![self _handleClipboardEvent:wxEVT_TEXT_COPY] )
+    if ( !HandleClipboardEvent(self, wxEVT_TEXT_COPY) )
         [super copy:sender];
 }
 
 - (void)cut:(id)sender
 {
-    if ( ![self _handleClipboardEvent:wxEVT_TEXT_CUT] )
+    if ( !HandleClipboardEvent(self, wxEVT_TEXT_CUT) )
         [super cut:sender];
 }
 
 - (void)paste:(id)sender
 {
-    if ( ![self _handleClipboardEvent:wxEVT_TEXT_PASTE] )
+    if ( !HandleClipboardEvent(self, wxEVT_TEXT_PASTE) )
         [super paste:sender];
 }
 
@@ -773,6 +838,10 @@ wxNSTextViewControl::wxNSTextViewControl( wxTextCtrl *wxPeer, WXWidget w, long s
 
     [tv setDelegate: tv];
 
+    m_undoManager = tv.undoManager;
+
+    [tv setAllowsUndo:YES];
+
     InstallEventHandler(tv);
 }
 
@@ -1019,6 +1088,46 @@ void wxNSTextViewControl::controlTextDidChange()
     DoUpdateTextStyle();
 }
 
+bool wxNSTextViewControl::CanUndo() const
+{
+    if ( !m_undoManager )
+        return false;
+
+    return [m_undoManager canUndo];
+}
+
+void wxNSTextViewControl::Undo()
+{
+    if ( !m_undoManager )
+        return;
+
+    [m_undoManager undo];
+}
+
+bool wxNSTextViewControl::CanRedo() const
+{
+    if ( !m_undoManager )
+        return false;
+
+    return [m_undoManager canRedo];
+}
+
+void wxNSTextViewControl::Redo()
+{
+    if ( !m_undoManager )
+        return;
+
+    [m_undoManager redo];
+}
+
+void wxNSTextViewControl::EmptyUndoBuffer()
+{
+    if ( !m_undoManager )
+        return;
+
+    [m_undoManager removeAllActions];
+}
+
 void wxNSTextViewControl::DoUpdateTextStyle()
 {
     if ( m_useCharWrapping )
@@ -1211,6 +1320,9 @@ void wxNSTextViewControl::SetStyle(long start,
             case wxTEXT_ALIGNMENT_CENTER:
                 [m_textView setAlignment:NSCenterTextAlignment];
                 break;
+            case wxTEXT_ALIGNMENT_JUSTIFIED:
+                [m_textView setAlignment:NSJustifiedTextAlignment];
+                break;
             default:
                 [m_textView setAlignment:NSLeftTextAlignment];
                 break;
@@ -1218,11 +1330,29 @@ void wxNSTextViewControl::SetStyle(long start,
     }
 }
 
-void wxNSTextViewControl::CheckSpelling(bool check)
+#if wxUSE_SPELLCHECK
+
+void wxNSTextViewControl::CheckSpelling(const wxTextProofOptions& options)
 {
-    if (m_textView)
-        [m_textView setContinuousSpellCheckingEnabled: check];
+    wxCHECK_RET( m_textView, "control must be created first" );
+
+    m_textView.continuousSpellCheckingEnabled = options.IsSpellCheckEnabled();
+    m_textView.grammarCheckingEnabled = options.IsGrammarCheckEnabled();
 }
+
+wxTextProofOptions wxNSTextViewControl::GetCheckingOptions() const
+{
+    wxTextProofOptions opts = wxTextProofOptions::Disable();
+    if ( m_textView )
+    {
+        opts.SpellCheck(m_textView.continuousSpellCheckingEnabled);
+        opts.GrammarCheck(m_textView.grammarCheckingEnabled);
+    }
+
+    return opts;
+}
+
+#endif // wxUSE_SPELLCHECK
 
 void wxNSTextViewControl::EnableAutomaticQuoteSubstitution(bool enable)
 {
@@ -1234,6 +1364,15 @@ void wxNSTextViewControl::EnableAutomaticDashSubstitution(bool enable)
 {
     if (m_textView)
         [m_textView setAutomaticDashSubstitutionEnabled:enable];
+}
+
+void wxNSTextViewControl::EnableNewLineReplacement(bool WXUNUSED(enable))
+{
+}
+
+bool wxNSTextViewControl::GetNewLineReplacement()
+{
+    return false;
 }
 
 wxSize wxNSTextViewControl::GetBestSize() const
@@ -1350,6 +1489,16 @@ wxTextEntryFormatter* wxNSTextFieldControl::GetFormatter()
 void wxNSTextFieldControl::SetMaxLength(unsigned long len)
 {
     [GetFormatter() setMaxLength:len];
+}
+
+void wxNSTextFieldControl::EnableNewLineReplacement(bool enable)
+{
+    [GetFormatter() replaceNewLine:enable];
+}
+
+bool wxNSTextFieldControl::GetNewLineReplacement()
+{
+    return [GetFormatter() getReplaceNewLine];
 }
 
 void wxNSTextFieldControl::ForceUpper()
@@ -1589,6 +1738,39 @@ void wxNSTextFieldControl::SetJustification()
         align = NSLeftTextAlignment;
 
     [m_textField setAlignment:align];
+}
+
+wxSize wxNSTextFieldControl::GetBestSize() const
+{
+    wxSize sz = wxDefaultSize;
+    if (  [m_textField respondsToSelector:@selector(sizeToFit)] )
+    {
+        NSRect former = [m_textField frame];
+        [m_textField sizeToFit];
+        NSRect best = [m_textField frame];
+        [m_textField setFrame:former];
+        sz.x = (int)ceil(best.size.width);
+        sz.y = (int)ceil(best.size.height);
+
+        // never be smaller than single-line NSMiniControlSize field:
+        sz.y = wxMax(sz.y, 16);
+
+        // !!! Any changes to these adjustments must be mirrored in wxTextCtrl::DoGetSizeFromTextSize() !!!
+
+        sz.x -= 4;
+        sz.y -= 2;
+
+        if ( [m_textField isBezeled] || [m_textField isBordered] )
+        {
+            // since this will be added again in DoGetSizeFromTextSize
+            // subtract it now
+            static const int TEXTCTRL_BORDER_SIZE = 5;
+            sz.y -= TEXTCTRL_BORDER_SIZE;
+            sz.x -= TEXTCTRL_BORDER_SIZE;
+        }
+    }
+
+    return sz;
 }
 
 //

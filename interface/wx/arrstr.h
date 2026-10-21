@@ -76,18 +76,28 @@ public:
     */
     wxArrayString(const wxArrayString& array);
 
-    //@{
     /**
         Constructor from a C string array. Pass a size @a sz and an array @a arr.
-    **/
+     */
     wxArrayString(size_t sz, const char** arr);
+
+    /**
+        Constructor from a C wide string array. Pass a size @a sz and an array @a arr.
+     */
     wxArrayString(size_t sz, const wchar_t** arr);
-    //@}
 
     /**
         Constructor from a wxString array. Pass a size @a sz and array @a arr.
     */
     wxArrayString(size_t sz, const wxString* arr);
+
+    /**
+        Constructs the container with the contents of the initializer_list @a list.
+
+        @since 3.2.4
+    */
+    template<typename T>
+    wxArrayString(std::initializer_list<T> list);
 
     /**
         Destructor frees memory occupied by the array strings. For performance
@@ -167,20 +177,20 @@ public:
 
         @see operator[] for the operator version.
     */
-    //@{
+    ///@{
     wxString& Item(size_t nIndex);
     const wxString& Item(size_t nIndex) const;
-    //@}
+    ///@}
 
     /**
         Returns the last element of the array. Attempt to access the last element of
         an empty array will result in assert failure in debug build, however no checks
         are done in release mode.
     */
-    //@{
+    ///@{
     wxString& Last();
     const wxString& Last() const;
-    //@}
+    ///@}
 
     /**
         Removes the first item matching this value. An assert failure is provoked by
@@ -343,7 +353,7 @@ public:
     void Insert(const wxString& str, size_t nIndex,
                 size_t copies = 1);
 
-    //@{
+    ///@{
     /**
         @warning This function should not be used with sorted array because it could
                  break the order of items and, for example, subsequent calls to Index()
@@ -354,7 +364,7 @@ public:
     */
     void Sort(bool reverseOrder = false);
     void Sort(CompareFunction compareFunction);
-    //@}
+    ///@}
 };
 
 /**
@@ -498,7 +508,7 @@ int wxCmpNaturalGeneric(const wxString& s1, const wxString& s2);
 // ============================================================================
 
 /** @addtogroup group_funcmacro_string */
-//@{
+///@{
 
 /**
     Splits the given wxString object using the separator @a sep and returns the
@@ -543,5 +553,5 @@ wxArrayString wxSplit(const wxString& str, const wxChar sep,
 wxString wxJoin(const wxArrayString& arr, const wxChar sep,
                 const wxChar escape = '\\');
 
-//@}
+///@}
 

@@ -10,7 +10,7 @@
 set(wxSAMPLE_FOLDER html)
 set(wxSAMPLE_SUBDIR html/)
 
-wx_add_sample(about DATA data/about.htm data/logo.png LIBRARIES wxhtml)
+wx_add_sample(about DATA data/about.htm data/logo.png data/bg.svg LIBRARIES wxhtml)
 wx_list_add_prefix(HELP_DATA_FILES helpfiles/
     Index.hhk
     another.hhc
@@ -32,7 +32,7 @@ wx_add_sample(test
         imagemap.png pic.png pic2.bmp i18n.gif
         imagemap.htm tables.htm test.htm listtest.htm 8859_2.htm cp1250.htm
         regres.htm foo.png subsup.html
-    LIBRARIES wxnet wxhtml NAME htmltest)
+    LIBRARIES wxnet wxhtml NAME htmltest DEPENDS wxUSE_SOCKETS)
 wx_add_sample(virtual DATA start.htm LIBRARIES wxhtml)
 wx_add_sample(widget DATA start.htm LIBRARIES wxhtml)
 wx_add_sample(zip DATA pages.zip start.htm LIBRARIES wxhtml DEPENDS wxUSE_FS_ZIP)

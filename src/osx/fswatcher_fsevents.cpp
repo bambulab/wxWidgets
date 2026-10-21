@@ -186,6 +186,10 @@ static void FileNameFromEvent(wxFileName& eventFileName, char* path,
     {
         eventFileName.AssignDir(strPath);
     }
+    if ( flags & kFSEventStreamEventFlagItemIsSymlink )
+    {
+        eventFileName.Assign(strPath);
+    }
 }
 
 // This is the function that the FsEvents API
@@ -294,6 +298,9 @@ wxFsEventsFileSystemWatcher::wxFsEventsFileSystemWatcher(const wxFileName& path,
 
 wxFsEventsFileSystemWatcher::~wxFsEventsFileSystemWatcher()
 {
+    // Remove all watches to ensure this object is not used any more.
+    RemoveAll();
+
     delete m_pImpl;
 }
 

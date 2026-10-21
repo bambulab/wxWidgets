@@ -16,7 +16,7 @@
 // ----------------------------------------------------------------------------
 
 #include "wx/defs.h"
-#include "wx/bitmap.h"
+#include "wx/vector.h"
 
 // ----------------------------------------------------------------------------
 // wxMenuItem: an item in the menu, optionally implements owner-drawn behaviour
@@ -38,12 +38,16 @@ public:
 
     // override base class virtuals
     virtual void SetItemLabel(const wxString& strName) wxOVERRIDE;
+    virtual void SetBitmap(const wxBitmapBundle& bitmap) wxOVERRIDE;
 
     virtual void Enable(bool bDoEnable = true) wxOVERRIDE;
     virtual void Check(bool bDoCheck = true) wxOVERRIDE;
 
-    virtual void SetBitmap(const wxBitmap& bitmap) ;
-    virtual const wxBitmap& GetBitmap() const { return m_bitmap; }
+#if wxUSE_ACCEL
+    virtual void AddExtraAccel(const wxAcceleratorEntry& accel) wxOVERRIDE;
+    virtual void ClearExtraAccels() wxOVERRIDE;
+    void RemoveHiddenItems();
+#endif // wxUSE_ACCEL
 
 
     // Implementation only from now on.
@@ -57,9 +61,11 @@ public:
 private:
     void UncheckRadio() ;
 
-    wxBitmap  m_bitmap; // Bitmap for menuitem, if any
-
     wxMenuItemImpl* m_peer;
+
+#if wxUSE_ACCEL
+    wxVector<wxMenuItem*> m_hiddenMenuItems;
+#endif // wxUSE_ACCEL
 
     wxDECLARE_DYNAMIC_CLASS(wxMenuItem);
 };

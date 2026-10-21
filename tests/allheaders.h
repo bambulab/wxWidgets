@@ -321,6 +321,7 @@
 #include <wx/statline.h>
 #include <wx/stattext.h>
 #include <wx/statusbr.h>
+#include <wx/stc/stc.h>
 #include <wx/stdpaths.h>
 #include <wx/stdstream.h>
 #include <wx/stockitem.h>
@@ -417,6 +418,10 @@
 #include <wx/xtixml.h>
 #include <wx/zipstrm.h>
 #include <wx/zstream.h>
+#include <wx/propgrid/advprops.h>
+#include <wx/propgrid/editors.h>
+#include <wx/propgrid/manager.h>
+#include <wx/propgrid/propgrid.h>
 
 #if defined(__WINDOWS__)
 #include <wx/dde.h>

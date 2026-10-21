@@ -552,7 +552,7 @@ expdecl const classname& classname##RefFromVariant( const wxVariant& variant ) \
 #define WX_PG_IMPLEMENT_VARIANT_DATA_GETTER(classname, expdecl) \
 expdecl classname& operator << ( classname &value, const wxVariant &variant )\
 {\
-    wxASSERT( variant.GetType() == #classname );\
+    wxASSERT( variant.GetType() == wxS(#classname) );\
     \
     classname##VariantData *data = (classname##VariantData*) variant.GetData();\
     value = data->GetValue();\
@@ -669,7 +669,7 @@ public:
     wxString GetNextToken();
 
 protected:
-    const wxString*             m_str;
+    const wxString&             m_str;
     wxString::const_iterator    m_curPos;
     wxString                    m_readyToken;
     wxUniChar                   m_delimiter;

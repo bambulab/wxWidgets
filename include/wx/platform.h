@@ -252,12 +252,12 @@
 #       endif
 #    endif  /* SGI */
 
-#    if defined(__INNOTEK_LIBC__)
+#    if defined(__INNOTEK_LIBC__) && !defined(_GNU_SOURCE)
         /* Ensure visibility of strnlen declaration */
 #        define _GNU_SOURCE
 #    endif
 
-#    if defined(__CYGWIN__)
+#    if defined(__CYGWIN__) && !defined(_GNU_SOURCE)
         /* Ensure visibility of Dl_info and pthread_setconcurrency declarations */
 #        define _GNU_SOURCE
 #    endif
@@ -286,6 +286,12 @@
 #        if !defined(wxSIZE_T_IS_UINT) && !defined(wxSIZE_T_IS_ULONG)
 #            define wxSIZE_T_IS_ULONG
 #        endif
+
+        /* Define this as soon as possible and before string.h is included to
+           get memset_s() declaration from it if available. */
+#       ifndef __STDC_WANT_LIB_EXT1__
+#           define __STDC_WANT_LIB_EXT1__ 1
+#       endif
 #    endif
 
 /*
@@ -415,6 +421,7 @@
 #ifdef __WXOSX__
 /* setup precise defines according to sdk used */
 #   include <TargetConditionals.h>
+#   include <Availability.h>
 #   if defined(__WXOSX_IPHONE__)
 #       if !( defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE )
 #           error "incorrect SDK for an iPhone build"
@@ -474,6 +481,18 @@
 #        endif
 #        ifndef MAC_OS_VERSION_11_0
 #           define MAC_OS_VERSION_11_0 110000
+#        endif
+#        ifndef MAC_OS_VERSION_12_0
+#           define MAC_OS_VERSION_12_0 120000
+#        endif
+#        ifndef MAC_OS_VERSION_11_0
+#           define MAC_OS_VERSION_13_0 130000
+#        endif
+#        ifndef MAC_OS_VERSION_14_0
+#           define MAC_OS_VERSION_14_0 140000
+#        endif
+#        ifndef MAC_OS_VERSION_26_0
+#           define MAC_OS_VERSION_26_0 260000
 #        endif
 #        if __MAC_OS_X_VERSION_MAX_ALLOWED < MAC_OS_X_VERSION_10_13
 #            ifndef NSAppKitVersionNumber10_10

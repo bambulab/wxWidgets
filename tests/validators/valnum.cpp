@@ -114,6 +114,40 @@ TEST_CASE_METHOD(NumValidatorTestCase, "ValNum::TransferUnsigned", "[valnum]")
     CHECK( !valUnsigned.TransferFromWindow() );
 }
 
+TEST_CASE_METHOD(NumValidatorTestCase, "ValNum::TransferUnsignedRange", "[valnum]")
+{
+    unsigned value = 1;
+    wxIntegerValidator<unsigned> valUnsigned(&value, 1, 20);
+    valUnsigned.SetWindow(m_text);
+
+    CHECK( valUnsigned.TransferToWindow() );
+    CHECK( m_text->GetValue() == "1" );
+
+    value = 17;
+    CHECK( valUnsigned.TransferToWindow() );
+    CHECK( m_text->GetValue() == "17" );
+
+    m_text->ChangeValue("foobar");
+    CHECK( !valUnsigned.TransferFromWindow() );
+
+    m_text->ChangeValue("0");
+    CHECK( !valUnsigned.TransferFromWindow() );
+
+    m_text->ChangeValue("1");
+    CHECK( valUnsigned.TransferFromWindow() );
+    CHECK( value == 1);
+
+    m_text->ChangeValue("20");
+    CHECK( valUnsigned.TransferFromWindow() );
+    CHECK( value == 20);
+
+    m_text->ChangeValue("21");
+    CHECK( !valUnsigned.TransferFromWindow() );
+
+    m_text->Clear();
+    CHECK( !valUnsigned.TransferFromWindow() );
+}
+
 TEST_CASE_METHOD(NumValidatorTestCase, "ValNum::TransferULL", "[valnum]")
 {
     unsigned long long value = 0;
@@ -228,14 +262,6 @@ TEST_CASE_METHOD(NumValidatorTestCase, "ValNum::NoTrailingZeroes", "[valnum]")
 
 TEST_CASE_METHOD(NumValidatorTestCase, "ValNum::Interactive", "[valnum]")
 {
-#ifdef __WXMSW__
-    // FIXME: This test fails on MSW buildbot slaves although works fine on
-    //        development machine, no idea why. It seems to be a problem with
-    //        wxUIActionSimulator rather the wxListCtrl control itself however.
-    if ( IsAutomaticTest() )
-        return;
-#endif // __WXMSW__
-
     // Set a locale using comma as thousands separator character.
     wxLocale loc(wxLANGUAGE_ENGLISH_UK, wxLOCALE_DONT_LOAD_DEFAULT);
 
@@ -317,9 +343,27 @@ TEST_CASE_METHOD(NumValidatorTestCase, "ValNum::Interactive", "[valnum]")
     wxYield();
     CHECK( text2->GetValue() == "9" );
 
+    // Entering a value which is out of range is allowed.
     sim.Char('9');
     wxYield();
-    CHECK( text2->GetValue() == "9" );
+    CHECK( text2->GetValue() == "99" );
+
+    // But it must be clamped to the valid range on focus loss.
+    m_text->SetFocus();
+    wxYield();
+    CHECK( text2->GetValue() == "10.000" );
+
+    // Repeat the test with a too small invalid value.
+    text2->Clear();
+    text2->SetFocus();
+
+    sim.Text("-22");
+    wxYield();
+    CHECK( text2->GetValue() == "-22" );
+
+    m_text->SetFocus();
+    wxYield();
+    CHECK( text2->GetValue() == "-10.000" );
 }
 
 #endif // wxUSE_UIACTIONSIMULATOR

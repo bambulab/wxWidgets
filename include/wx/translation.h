@@ -61,6 +61,11 @@
 // perform the translation (use -kwxTRANSLATE with xgettext!)
 #define wxTRANSLATE(str) str
 
+// another one which just marks the strings, with a context, for extraction,
+// but doesn't perform the translation (use -kwxTRANSLATE_IN_CONTEXT:1c,2 with
+// xgettext!)
+#define wxTRANSLATE_IN_CONTEXT(c, str) str
+
 // ----------------------------------------------------------------------------
 // forward decls
 // ----------------------------------------------------------------------------
@@ -81,9 +86,7 @@ class WXDLLIMPEXP_BASE wxMsgCatalog
 public:
     // Ctor is protected, because CreateFromXXX functions must be used,
     // but destruction should be unrestricted
-#if !wxUSE_UNICODE
     ~wxMsgCatalog();
-#endif
 
     // load the catalog from disk or from data; caller is responsible for
     // deleting them if not NULL
@@ -149,16 +152,31 @@ public:
     // get languages available for this app
     wxArrayString GetAvailableTranslations(const wxString& domain) const;
 
-    // find best translation language for given domain
+#if wxABI_VERSION >= 30203
+    // find best available translation language for given domain
+    wxString GetBestAvailableTranslation(const wxString& domain);
+#endif // wxABI_VERSION >= 3.2.3
+
     wxString GetBestTranslation(const wxString& domain, wxLanguage msgIdLanguage);
     wxString GetBestTranslation(const wxString& domain,
                                 const wxString& msgIdLanguage = wxASCII_STR("en"));
+
+#if wxABI_VERSION >= 30203
+    // add catalog for the given domain returning true if it could be found by
+    // wxTranslationsLoader
+    bool AddAvailableCatalog(const wxString& domain);
+#endif // wxABI_VERSION >= 3.2.3
+#if wxABI_VERSION >= 30206
+    bool AddAvailableCatalog(const wxString& domain, wxLanguage msgIdLanguage);
+#endif // wxABI_VERSION >= 3.2.5
 
     // add standard wxWidgets catalog ("wxstd")
     bool AddStdCatalog();
 
     // add catalog with given domain name and language, looking it up via
-    // wxTranslationsLoader
+    // wxTranslationsLoader -- unlike AddAvailableCatalog(), this function also
+    // returns true if this catalog is not needed at all because msgIdLanguage
+    // is an acceptable language to use directly
     bool AddCatalog(const wxString& domain,
                     wxLanguage msgIdLanguage = wxLANGUAGE_ENGLISH_US);
 #if !wxUSE_UNICODE
@@ -188,6 +206,15 @@ public:
     static const wxString& GetUntranslatedString(const wxString& str);
 
 private:
+    enum Translations
+    {
+      Translations_NotNeeded = -1,
+      Translations_NotFound = 0,
+      Translations_Found = 1
+    };
+
+    Translations DoAddCatalog(const wxString& domain, wxLanguage msgIdLanguage);
+
     // perform loading of the catalog via m_loader
     bool LoadCatalog(const wxString& domain, const wxString& lang, const wxString& msgIdLang);
 
@@ -197,6 +224,8 @@ private:
     // same as Set(), without taking ownership; only for wxLocale
     static void SetNonOwned(wxTranslations *t);
     friend class wxLocale;
+
+    wxString DoGetBestAvailableTranslation(const wxString& domain, const wxString& additionalAvailableLanguage);
 
 private:
     wxString m_lang;
@@ -345,6 +374,7 @@ inline const wxString& wxGetTranslation(const char *str1,
 #endif
 
 #define wxTRANSLATE(str) str
+#define wxTRANSLATE_IN_CONTEXT(c, str) str
 
 // NB: we use a template here in order to avoid using
 //     wxLocale::GetUntranslatedString() above, which would be required if

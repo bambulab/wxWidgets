@@ -51,6 +51,10 @@
     wxDEFINE_SCOPED_PTR(wxEvent, wxEventPtr)
 #endif // wxUSE_BASE
 
+#if wxUSE_GUI
+    #include "wx/private/rescale.h"
+#endif
+
 // ----------------------------------------------------------------------------
 // wxWin macros
 // ----------------------------------------------------------------------------
@@ -873,10 +877,58 @@ bool wxKeyEvent::IsKeyInCategory(int category) const
             return (category & WXK_CATEGORY_JUMP) != 0;
 
         case WXK_TAB:
+            // We have to make an extra check for this one, as it's a synonym
+            // for Ctrl-I, but we don't want to recognize Ctrl-I as a TAB key.
+            // As raw key codes are platform-dependent we have to do it in
+            // platform-specific way.
+#ifdef __WXMSW__
+            // Under Windows the native WM_CHAR already does the translation
+            // and so we need to look at the scan code, which is part of the
+            // flags, rather than the key code itself.
+            if ( ((GetRawKeyFlags() >> 16) & 0xff) == 0x17 )
+            {
+                return false;
+            }
+#else // !__WXMSW__
+            // For the other platforms we can use the raw key code, but it's
+            // still different, with Mac doing its own thing. We assume all the
+            // other platforms do as GTK does and use either "I" or "i" for
+            // this letter events.
+            switch ( GetRawKeyCode() )
+            {
+#ifdef __WXOSX__
+                case 0x22: // kVK_ANSI_I
+#else
+                case 'I':
+                case 'i':
+#endif
+                    return false;
+            }
+#endif // __WXMSW__/!__WXMSW__
+            wxFALLTHROUGH;
         case WXK_NUMPAD_TAB:
             return (category & WXK_CATEGORY_TAB) != 0;
 
         case WXK_BACK:
+            // See the comment above for TAB.
+#ifdef __WXMSW__
+            if ( ((GetRawKeyFlags() >> 16) & 0xff) == 0x23 )
+            {
+                return false;
+            }
+#else // !__WXMSW__
+            switch ( GetRawKeyCode() )
+            {
+#ifdef __WXOSX__
+                case 0x04: // kVK_ANSI_H
+#else
+                case 'H':
+                case 'h':
+#endif
+                    return false;
+            }
+#endif // __WXMSW__/!__WXMSW__
+            wxFALLTHROUGH;
         case WXK_DELETE:
         case WXK_NUMPAD_DELETE:
             return (category & WXK_CATEGORY_CUT) != 0;
@@ -931,6 +983,15 @@ wxHelpEvent::Origin wxHelpEvent::GuessOrigin(Origin origin)
     }
 
     return origin;
+}
+
+// ----------------------------------------------------------------------------
+// wxDPIChangedEvent
+// ----------------------------------------------------------------------------
+
+wxSize wxDPIChangedEvent::Scale(wxSize sz) const
+{
+    return wxRescaleCoord(sz).From(m_oldDPI).To(m_newDPI);
 }
 
 #endif // wxUSE_GUI
@@ -1382,7 +1443,10 @@ void wxEvtHandler::ProcessPendingEvents()
 
     wxLEAVE_CRIT_SECT( m_pendingEventsLock );
 
-    ProcessEvent(*event);
+    // We must not let exceptions escape from here, there is no outer exception
+    // handler to catch them and so letting them do it would just terminate the
+    // program.
+    SafelyProcessEvent(*event);
 
     // careful: this object could have been deleted by the event handler
     // executed by the above ProcessEvent() call, so we can't access any fields
@@ -1615,7 +1679,6 @@ bool wxEvtHandler::TryHereOnly(wxEvent& event)
     if ( GetEventHashTable().HandleEvent(event, this) )
         return true;
 
-#ifdef wxHAS_CALL_AFTER
     // There is an implicit entry for async method calls processing in every
     // event handler:
     if ( event.GetEventType() == wxEVT_ASYNC_METHOD_CALL &&
@@ -1624,7 +1687,6 @@ bool wxEvtHandler::TryHereOnly(wxEvent& event)
         static_cast<wxAsyncMethodCallEvent&>(event).Execute();
         return true;
     }
-#endif // wxHAS_CALL_AFTER
 
     // We don't have a handler for this event.
     return false;
@@ -2002,6 +2064,9 @@ void wxEvtHandler::OnSinkDestroyed( wxEvtHandler *sink )
         }
     }
 }
+
+void* wxEvtHandler::WXReservedEvtHandler1(void*) { return NULL; }
+void* wxEvtHandler::WXReservedEvtHandler2(void*) { return NULL; }
 
 #endif // wxUSE_BASE
 

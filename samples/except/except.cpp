@@ -61,8 +61,12 @@
 
 static void DoCrash()
 {
+    wxGCC_WARNING_SUPPRESS(nonnull)
+
     char *p = 0;
     strcpy(p, "Let's crash");
+
+    wxGCC_WARNING_RESTORE(nonnull)
 }
 
 // ----------------------------------------------------------------------------
@@ -564,7 +568,7 @@ void MyFrame::OnShowAssert(wxCommandEvent& WXUNUSED(event))
 {
     // provoke an assert from wxArrayString
     wxArrayString arr;
-    arr[0];
+    wxUnusedVar(arr[0]);
 }
 
 #if wxUSE_THREADS

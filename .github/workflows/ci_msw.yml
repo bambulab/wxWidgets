@@ -1,0 +1,138 @@
+# CI workflow building wxMSW under Windows.
+name: MSW builds
+
+on:
+  push:
+    branches:
+      - 3.2
+    paths-ignore:
+      - '.circleci/**'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/workflows/ci.yml'
+      - '.github/workflows/ci_cmake.yml'
+      - '.github/workflows/ci_mac.yml'
+      - '.github/workflows/ci_msw_cross.yml'
+      - '.github/workflows/docs_update.yml'
+      - 'build/cmake/**'
+      - 'build/tools/appveyor*.bat'
+      - 'distrib/**'
+      - 'docs/**'
+      - 'interface/**'
+      - 'include/wx/gtk/**'
+      - 'include/wx/osx/**'
+      - 'locale/**'
+      - 'src/gtk/**'
+      - 'src/osx/**'
+      - '*.md'
+      - '*.yml'
+      - 'CMakeLists.txt'
+  pull_request:
+    branches:
+      - 3.2
+    paths-ignore:
+      - '.circleci/**'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/workflows/ci.yml'
+      - '.github/workflows/ci_cmake.yml'
+      - '.github/workflows/ci_mac.yml'
+      - '.github/workflows/ci_msw_cross.yml'
+      - '.github/workflows/docs_update.yml'
+      - 'build/cmake/**'
+      - 'build/tools/appveyor*.bat'
+      - 'distrib/**'
+      - 'docs/**'
+      - 'interface/**'
+      - 'include/wx/gtk/**'
+      - 'include/wx/osx/**'
+      - 'locale/**'
+      - 'src/gtk/**'
+      - 'src/osx/**'
+      - '*.md'
+      - '*.yml'
+      - 'CMakeLists.txt'
+
+permissions:
+  contents: read
+
+jobs:
+  msw-msvs:
+    runs-on: windows-2022
+    name: wxMSW vs2022 ${{ matrix.configuration }} ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - configuration: 'DLL Debug'
+            platform: 'x64'
+            use_utf8: true
+          - configuration: 'Debug'
+            platform: 'Win32'
+          - configuration: 'DLL Release'
+            platform: 'x64'
+            use_stl: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: 'recursive'
+
+      - name: Configure to use STL
+        if: matrix.use_stl
+        working-directory: include/wx/msw
+        run: |
+            $txt = Get-Content setup.h
+            Write-Output $txt |
+            %{$_ -replace "define wxUSE_STL 0", "define wxUSE_STL 1"} |
+            Set-Content setup.h
+
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v3
+        with:
+            vs-prerelease: true
+
+      - name: Build
+        run: |
+            msbuild /noLogo /m '/p:Configuration=${{ matrix.configuration }}' /p:Platform=${{ matrix.platform }} build\msw\wx_vc16.sln
+            if ( '${{ matrix.configuration }}'.IndexOf('DLL') -ne -1 ) {
+                $dlldir = Join-Path (Get-Location) 'lib\vc_${{ matrix.platform }}_dll'
+                Write-Output "Adding $dlldir to the PATH"
+                $dlldir | Out-File -Append $env:GITHUB_PATH
+            }
+
+      - name: Build minimal sample
+        run: |
+            msbuild /noLogo /m '/p:Configuration=${{ matrix.configuration }}' /p:Platform=${{ matrix.platform }} samples\minimal\minimal_vc16.sln
+
+      - name: Build tests
+        run: |
+            msbuild /noLogo /m '/p:Configuration=${{ matrix.configuration }}' /p:Platform=${{ matrix.platform }} tests\test_vc16.sln
+
+      - name: Run tests
+        working-directory: tests
+        run: |
+            go install github.com/mccutchen/go-httpbin/v2/cmd/go-httpbin@v2
+            $gopath = $(go env GOPATH)
+            $env:PATH += ";$gopath\bin"
+            Start-Job -Name wx_httpbin { go-httpbin -host 127.0.0.1 -port 8081 2>&1 > httpbin.log }
+            Start-Sleep -Seconds 5
+            curl.exe --silent --show-error http://127.0.0.1:8081/ip > $null
+            if ($lastExitCode -eq "0") {
+                $env:WX_TEST_WEBREQUEST_URL="http://127.0.0.1:8081"
+            }
+            else {
+                Write-Error "Disabling wxWebRequest tests as launching httpbin failed, log follows:"
+                Get-Content httpbin.log
+                $env:WX_TEST_WEBREQUEST_URL="0"
+            }
+
+            .\vc*msw*\test.exe
+
+      - name: Build GUI tests
+        run: |
+            msbuild /noLogo /m '/p:Configuration=${{ matrix.configuration }}' /p:Platform=${{ matrix.platform }} tests\test_gui_vc16.sln
+
+      - name: Run GUI tests
+        working-directory: tests
+        run: |
+            .\vc*msw*\test_gui.exe

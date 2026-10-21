@@ -7,11 +7,17 @@
 # Licence:     wxWindows licence
 #############################################################################
 
-include(../../source_groups.cmake)
+if(NOT wxUSE_XRC)
+    wx_append_install_headers(XRC_HDR)
+    return()
+endif()
 
 wx_append_sources(XRC_FILES XRC)
 
 wx_add_library(wxxrc ${XRC_FILES})
-wx_lib_link_libraries(wxxrc PRIVATE wxhtml wxxml)
-
-wx_finalize_lib(wxxrc)
+if(wxUSE_XML)
+    wx_lib_link_libraries(wxxrc PRIVATE wxxml)
+endif()
+if(wxUSE_HTML)
+    wx_lib_link_libraries(wxxrc PRIVATE wxhtml)
+endif()

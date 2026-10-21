@@ -27,6 +27,7 @@
 #endif
 
 #include "wx/fontutil.h"
+#include "wx/private/bmpbndl.h"
 
 #ifdef __WXMAC__
 
@@ -165,14 +166,14 @@ WXWindow wxOSXGetKeyWindow()
 
 #if wxOSX_USE_IPHONE
 
-wxBitmap wxOSXCreateSystemBitmap(const wxString& name, const wxString &client, const wxSize& size)
+wxBitmapBundle wxOSXCreateSystemBitmapBundle(const wxString& name, const wxString &client, const wxSize& size)
 {
 #if 1
     // unfortunately this only accesses images in the app bundle, not the system wide globals
     wxCFStringRef cfname(name);
-    return wxBitmap( [[UIImage imageNamed:cfname.AsNSString()] CGImage] );
+    return wxOSXMakeBundleFromImage( [UIImage imageNamed:cfname.AsNSString()] );
 #else
-    return wxBitmap();
+    return wxNullBitmap;
 #endif
 }
 
@@ -197,14 +198,12 @@ WXImage wxOSXGetSystemImage(const wxString& name)
     return nsimage;
 }
 
-wxBitmap wxOSXCreateSystemBitmap(const wxString& name, const wxString &WXUNUSED(client), const wxSize& WXUNUSED(sizeHint))
+wxBitmapBundle wxOSXCreateSystemBitmapBundle(const wxString& name, const wxString &WXUNUSED(client), const wxSize& WXUNUSED(sizeHint))
 {
     NSImage* nsimage = wxOSXGetSystemImage(name);
     if ( nsimage )
     {
-        // if ( sizeHint != wxDefaultSize )
-        //    [nsimage setSize:NSMakeSize(sizeHint.GetHeight(), sizeHint.GetWidth())];
-        return wxBitmap( nsimage );
+        return wxOSXMakeBundleFromImage( nsimage );
     }
     return wxNullBitmap;
 }
@@ -288,10 +287,78 @@ CGContextRef WXDLLIMPEXP_CORE wxOSXCreateBitmapContextFromImage( WXImage nsimage
     return hbitmap;
 }
 
+namespace
+{
+#if wxOSX_USE_COCOA
+    NSCompositingOperation wxOSXNSCompositionFromWXComposition( wxCompositionMode composition )
+    {
+        NSCompositingOperation mode = NSCompositingOperationSourceOver;
+        switch( composition )
+        {
+            case wxCOMPOSITION_CLEAR:
+                mode = NSCompositingOperationClear;
+                break;
+            case wxCOMPOSITION_SOURCE:
+                mode = NSCompositingOperationCopy;
+                break;
+            case wxCOMPOSITION_OVER:
+                mode = NSCompositingOperationSourceOver;
+                break;
+            case wxCOMPOSITION_IN:
+                mode = NSCompositingOperationSourceIn;
+                break;
+            case wxCOMPOSITION_OUT:
+                mode = NSCompositingOperationSourceOut;
+                break;
+            case wxCOMPOSITION_ATOP:
+                mode = NSCompositingOperationSourceAtop;
+                break;
+            case wxCOMPOSITION_DEST_OVER:
+                mode = NSCompositingOperationDestinationOver;
+                break;
+            case wxCOMPOSITION_DEST_IN:
+                mode = NSCompositingOperationDestinationIn;
+                break;
+            case wxCOMPOSITION_DEST_OUT:
+                mode = NSCompositingOperationDestinationOut;
+                break;
+            case wxCOMPOSITION_DEST_ATOP:
+                mode = NSCompositingOperationDestinationAtop;
+                break;
+            case wxCOMPOSITION_XOR:
+                mode = NSCompositingOperationExclusion; // Not NSCompositingOperationXOR!
+                break;
+            case wxCOMPOSITION_ADD:
+                mode = NSCompositingOperationPlusLighter ;
+                break;
+            case wxCOMPOSITION_DIFF:
+                mode = NSCompositingOperationDifference ;
+                break;
+            default:
+                mode = NSCompositingOperationSourceOver;
+                break;
+        }
+
+        return mode;
+    }
+#endif
+} // anonymous namespace
+
+#if wxOSX_USE_COCOA
 void WXDLLIMPEXP_CORE wxOSXDrawNSImage(
                                           CGContextRef    inContext,
                                           const CGRect *  inBounds,
                                           WXImage      inImage)
+{
+    wxOSXDrawNSImage(inContext, inBounds, inImage, wxCOMPOSITION_OVER);
+}
+#endif
+
+void WXDLLIMPEXP_CORE wxOSXDrawNSImage(
+                                          CGContextRef    inContext,
+                                          const CGRect *  inBounds,
+                                          WXImage      inImage,
+                                          wxCompositionMode composition)
 {
     if (inImage != nil)
     {
@@ -302,13 +369,14 @@ void WXDLLIMPEXP_CORE wxOSXDrawNSImage(
         CGContextScaleCTM(inContext, 1, -1);
 
 #if wxOSX_USE_COCOA
-       NSGraphicsContext *previousContext = [NSGraphicsContext currentContext];
+        NSGraphicsContext *previousContext = [NSGraphicsContext currentContext];
         NSGraphicsContext *nsGraphicsContext = [NSGraphicsContext graphicsContextWithCGContext:inContext flipped:NO];
         [NSGraphicsContext setCurrentContext:nsGraphicsContext];
-        [inImage drawInRect:NSRectFromCGRect(r) fromRect:NSZeroRect operation:NSCompositeSourceOver fraction:1.0];
+
+        [inImage drawInRect:NSRectFromCGRect(r) fromRect:NSZeroRect operation:wxOSXNSCompositionFromWXComposition(composition) fraction:1.0];
         [NSGraphicsContext setCurrentContext:previousContext];
 #else
-        CGContextDrawImage(inContext, *inBounds, [inImage CGImage]);
+        CGContextDrawImage(inContext, r, [inImage CGImage]);
 #endif
         CGContextRestoreGState(inContext);
 
@@ -613,6 +681,11 @@ void  wxMacCocoaHideCursor()
 void  wxMacCocoaShowCursor()
 {
     [NSCursor unhide];
+}
+
+wxPoint wxMacCocoaGetCursorHotSpot(WX_NSCursor cursor)
+{
+    return wxPoint([cursor hotSpot].x, [cursor hotSpot].y);
 }
 #endif
 

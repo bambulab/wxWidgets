@@ -36,33 +36,6 @@
  */
 #ifdef __UNIX__
 
-#if defined(HAVE_VSNPRINTF) && !defined(HAVE_VSNPRINTF_DECL)
-#ifdef __cplusplus
-    extern "C"
-#else
-    extern
-#endif
-    int vsnprintf(char *str, size_t size, const char *format, va_list ap);
-#endif /* !HAVE_VSNPRINTF_DECL */
-
-#if defined(HAVE_SNPRINTF) && !defined(HAVE_SNPRINTF_DECL)
-#ifdef __cplusplus
-    extern "C"
-#else
-    extern
-#endif
-    int snprintf(char *str, size_t size, const char *format, ...);
-#endif /* !HAVE_SNPRINTF_DECL */
-
-#if defined(HAVE_VSSCANF) && !defined(HAVE_VSSCANF_DECL)
-#ifdef __cplusplus
-    extern "C"
-#else
-    extern
-#endif
-    int vsscanf(const char *str, const char *format, va_list ap);
-#endif /* !HAVE_VSSCANF_DECL */
-
 /* Wrapper for vsnprintf if it's 3rd parameter is non-const. Note: the
  * same isn't done for snprintf below, the builtin wxSnprintf_ is used
  * instead since it's already a simple wrapper */
@@ -313,6 +286,11 @@ wxGCC_ONLY_WARNING_RESTORE(format-nonliteral)
         return implA args
 #endif
 
+// In non-Unicode build we get suggestions for using gnu_printf format
+// attribute, but it doesn't work in Unicode build, so don't bother with it and
+// just disable the warning.
+wxGCC_ONLY_WARNING_SUPPRESS(suggest-attribute=format)
+
 inline int
 wxVprintf(const wxString& format, va_list ap)
 {
@@ -326,6 +304,8 @@ wxVfprintf(FILE *f, const wxString& format, va_list ap)
     WX_VARARG_VFOO_IMPL((f, wxFormatString(format), ap),
                         wxCRT_VfprintfW, wxCRT_VfprintfA);
 }
+
+wxGCC_ONLY_WARNING_RESTORE(suggest-attribute=format)
 
 #undef WX_VARARG_VFOO_IMPL
 

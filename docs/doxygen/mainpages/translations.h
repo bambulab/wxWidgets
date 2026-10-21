@@ -459,7 +459,7 @@ Here are the steps you should follow:
    for your language. Initialization can be also done using e.g. Poedit (see next item).
 -# Translate the strings in this file using either your favourite text
    editor or a specialized tool such as Vaclav Slavik's excellent
-   <a href="http://www.poedit.net/">poEdit</a> utility.
+   <a href="http://www.poedit.com/">Poedit</a> utility.
 -# Verify that your translations can at least be compiled (even if they
    are yet incomplete) by running <tt>msgfmt -vc XY.po</tt> command:
    please note that you <i>must</i> use the <tt>-c</tt> option. In
@@ -467,6 +467,11 @@ Here are the steps you should follow:
    accept the default values for them.
 -# Send the finished translation to <a href="mailto:vadim@wxwidgets.org">Vadim Zeitlin</a>
    and it will be added to the next wxWidgets release or snapshot.
+
+In addition, please consider subscribing to the very low volume
+<a href="https://www.wxwidgets.org/support/mailing-lists/">
+wxWidgets translators mailing list</a> on which the news especially important
+for the translators are announced.
 
 Thank you in advance for your help!
 

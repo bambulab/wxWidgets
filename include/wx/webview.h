@@ -138,7 +138,7 @@ public:
     wxWebView()
     {
         m_showMenu = true;
-        m_runScriptCount = 0;
+        m_syncScriptResult = 0;
     }
 
     virtual ~wxWebView() {}
@@ -200,7 +200,8 @@ public:
     virtual wxString GetUserAgent() const;
 
     // Script
-    virtual bool RunScript(const wxString& javascript, wxString* output = NULL) const = 0;
+    virtual bool RunScript(const wxString& javascript, wxString* output = NULL) const;
+    virtual void RunScriptAsync(const wxString& javascript, void* clientData = NULL) const;
     virtual bool AddScriptMessageHandler(const wxString& name)
     { wxUnusedVar(name); return false; }
     // Optional second argument: when false, backends that support it inject the
@@ -288,15 +289,16 @@ protected:
     bool QueryCommandEnabled(const wxString& command) const;
     void ExecCommand(const wxString& command);
 
-    // Count the number of calls to RunScript() in order to prevent
-    // the_same variable from being used twice in more than one call.
-    mutable int m_runScriptCount;
+    void SendScriptResult(void* clientData, bool success,
+        const wxString& output) const;
 
 private:
     static void InitFactoryMap();
     static wxStringWebViewFactoryMap::iterator FindFactory(const wxString &backend);
 
     bool m_showMenu;
+    mutable int m_syncScriptResult;
+    mutable wxString m_syncScriptOutput;
     wxString m_findText;
     static wxStringWebViewFactoryMap m_factoryMap;
 
@@ -315,6 +317,7 @@ public:
           m_actionFlags(flags), m_messageHandler(messageHandler)
     {}
 
+    bool IsError() const { return GetInt() == 0; }
 
     const wxString& GetURL() const { return m_url; }
     const wxString& GetTarget() const { return m_target; }
@@ -329,7 +332,7 @@ private:
     wxWebViewNavigationActionFlags m_actionFlags;
     wxString m_messageHandler;
 
-    wxDECLARE_DYNAMIC_CLASS_NO_ASSIGN(wxWebViewEvent);
+    wxDECLARE_DYNAMIC_CLASS_NO_ASSIGN_DEF_COPY(wxWebViewEvent);
 };
 
 wxDECLARE_EXPORTED_EVENT( WXDLLIMPEXP_WEBVIEW, wxEVT_WEBVIEW_NAVIGATING, wxWebViewEvent );
@@ -340,6 +343,7 @@ wxDECLARE_EXPORTED_EVENT( WXDLLIMPEXP_WEBVIEW, wxEVT_WEBVIEW_NEWWINDOW, wxWebVie
 wxDECLARE_EXPORTED_EVENT( WXDLLIMPEXP_WEBVIEW, wxEVT_WEBVIEW_TITLE_CHANGED, wxWebViewEvent );
 wxDECLARE_EXPORTED_EVENT( WXDLLIMPEXP_WEBVIEW, wxEVT_WEBVIEW_FULLSCREEN_CHANGED, wxWebViewEvent);
 wxDECLARE_EXPORTED_EVENT( WXDLLIMPEXP_WEBVIEW, wxEVT_WEBVIEW_SCRIPT_MESSAGE_RECEIVED, wxWebViewEvent);
+wxDECLARE_EXPORTED_EVENT( WXDLLIMPEXP_WEBVIEW, wxEVT_WEBVIEW_SCRIPT_RESULT, wxWebViewEvent);
 
 typedef void (wxEvtHandler::*wxWebViewEventFunction)
              (wxWebViewEvent&);
@@ -369,6 +373,18 @@ typedef void (wxEvtHandler::*wxWebViewEventFunction)
 
 #define EVT_WEBVIEW_TITLE_CHANGED(id, fn) \
     wx__DECLARE_EVT1(wxEVT_WEBVIEW_TITLE_CHANGED, id, \
+                     wxWebViewEventHandler(fn))
+
+#define EVT_WEBVIEW_FULLSCREEN_CHANGED(id, fn) \
+    wx__DECLARE_EVT1(wxEVT_WEBVIEW_FULLSCREEN_CHANGED, id, \
+                     wxWebViewEventHandler(fn))
+
+#define EVT_WEBVIEW_SCRIPT_MESSAGE_RECEIVED(id, fn) \
+    wx__DECLARE_EVT1(wxEVT_WEBVIEW_SCRIPT_MESSAGE_RECEIVED, id, \
+                     wxWebViewEventHandler(fn))
+
+#define EVT_WEBVIEW_SCRIPT_RESULT(id, fn) \
+    wx__DECLARE_EVT1(wxEVT_WEBVIEW_SCRIPT_RESULT, id, \
                      wxWebViewEventHandler(fn))
 
 // old wxEVT_COMMAND_* constants

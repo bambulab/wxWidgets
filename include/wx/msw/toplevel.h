@@ -68,6 +68,9 @@ public:
     virtual bool ShowFullScreen(bool show, long style = wxFULLSCREEN_ALL) wxOVERRIDE;
     virtual bool IsFullScreen() const wxOVERRIDE { return m_fsIsShowing; }
 
+    virtual wxContentProtection GetContentProtection() const wxOVERRIDE;
+    virtual bool SetContentProtection(wxContentProtection contentProtection) wxOVERRIDE;
+
     // wxMSW only: EnableCloseButton(false) may be used to remove the "Close"
     // button from the title bar
     virtual bool EnableCloseButton(bool enable = true) wxOVERRIDE;
@@ -166,6 +169,11 @@ protected:
                                           int& x, int& y,
                                           int& w, int& h) const wxOVERRIDE;
 
+    // override this one to update our icon on DPI change (not quite the same
+    // thing as font, but close enough...)
+    virtual void MSWUpdateFontOnDPIChange(const wxSize& newDPI) wxOVERRIDE;
+
+
     // This field contains the show command to use when showing the window the
     // next time and also indicates whether the window should be considered
     // being iconized or maximized (which may be different from whether it's
@@ -192,6 +200,10 @@ protected:
     wxWindowRef m_winLastFocused;
 
 private:
+    // Part of SetIcons() actually updating the window icons.
+    void DoSetIcons();
+
+
     // The system menu: initially NULL but can be set (once) by
     // MSWGetSystemMenu(). Owned by this window.
     wxMenu *m_menuSystem;

@@ -4,19 +4,22 @@ name: Code Checks
 on:
   push:
     branches:
-      - master
+      - 3.2
   pull_request:
     branches:
-      - master
+      - 3.2
+
+permissions:
+  contents: read
 
 jobs:
   check-unix:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     name: Check Spelling
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v6
 
       - name: Install codespell
         run: |
@@ -28,38 +31,44 @@ jobs:
 
 
   check-whitespace:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     name: Check Whitespace
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v6
 
       - name: Check for trailing whitespace and TABs
         run: |
-            git fetch --depth=1 origin master
+            git fetch --depth=1 origin 3.2
             git -c core.whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol,tab-in-indent \
-                diff --check origin/master \
+                diff --check origin/3.2 \
+                ':!.gitmodules' \
                 ':!Makefile.in' \
                 ':!config.guess' \
                 ':!config.sub' \
                 ':!configure' \
                 ':!descrip.mms' \
                 ':!install-sh' \
+                ':!build/cmake/modules/cotire.cmake' \
+                ':!docs/doxygen/doxygen-awesome-css/*' \
+                ':!misc/unictabl/mappings/*.TXT' \
+                ':!samples/widgets/widgets.bkl' \
                 ':!**/*akefile*' \
                 ':!**/*.pbxproj' \
+                ':!**/Info*.plist*' \
                 ':!**/*.sln' \
                 ':!**/*.vcproj' \
                 ':!**/*.xpm'
 
 
   check-mixed-eol:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     name: Check Mixed EOL
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v6
 
       - name: Install dos2unix
         run: |
@@ -68,3 +77,23 @@ jobs:
       - name: Check for mixed EOL
         run: |
             ./misc/scripts/check_mixed_eol.sh
+
+  check-cxx-style:
+    runs-on: ubuntu-latest
+    name: Check C++ Style
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Check for C++11 keywords
+        run: |
+            git fetch --depth=1 origin 3.2
+            if git diff origin/3.2 \
+               ':!.github/workflows/code_checks.yml' \
+               ':!src/stc/scintilla/' \
+               | sed 's@//.*@@' \
+               | grep -E '(override($|;| *\{)|noexcept|nullptr[^_])'; then
+              echo "::error ::Please use C++98 equivalents of the C++11 keywords in this branch."
+              exit 1
+            fi

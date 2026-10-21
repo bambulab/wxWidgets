@@ -120,8 +120,13 @@ extern LONG APIENTRY
 // useful macros and functions
 // ---------------------------------------------------------------------------
 
-// a wrapper macro for ZeroMemory()
-#define wxZeroMemory(obj)   ::ZeroMemory(&obj, sizeof(obj))
+// a wrapper for ZeroMemory()
+template <typename T>
+inline void wxZeroMemory(T& obj)
+{
+    // Cast is needed just to avoid clang "nontrivial-memcall" warning.
+    ::ZeroMemory(static_cast<void*>(&obj), sizeof(obj));
+}
 
 // This one is a macro so that it can be tested with #ifdef, it will be
 // undefined if it cannot be implemented for a given compiler.
@@ -186,7 +191,7 @@ struct WinStruct : public T
 {
     WinStruct()
     {
-        ::ZeroMemory(this, sizeof(T));
+        wxZeroMemory(*this);
 
         // explicit qualification is required here for this to be valid C++
         this->cbSize = sizeof(T);
@@ -437,13 +442,14 @@ private:
     wxDECLARE_NO_COPY_CLASS(ScreenHDC);
 };
 
-// the same as ScreenHDC but for window DCs
+// the same as ScreenHDC but for window DCs (and if HWND is NULL, then exactly
+// the same as it)
 class WindowHDC
 {
 public:
     WindowHDC() : m_hwnd(NULL), m_hdc(NULL) { }
     WindowHDC(HWND hwnd) { m_hdc = ::GetDC(m_hwnd = hwnd); }
-   ~WindowHDC() { if ( m_hwnd && m_hdc ) { ::ReleaseDC(m_hwnd, m_hdc); } }
+   ~WindowHDC() { if ( m_hdc ) { ::ReleaseDC(m_hwnd, m_hdc); } }
 
     operator HDC() const { return m_hdc; }
 
@@ -469,6 +475,13 @@ private:
 
     wxDECLARE_NO_COPY_CLASS(MemoryHDC);
 };
+
+// Helper function returning the resolution of the given HDC.
+inline wxSize wxGetDPIofHDC(HDC hdc)
+{
+    return wxSize(::GetDeviceCaps(hdc, LOGPIXELSX),
+                  ::GetDeviceCaps(hdc, LOGPIXELSY));
+}
 
 // a class which selects a GDI object into a DC in its ctor and deselects in
 // dtor
@@ -714,6 +727,14 @@ public:
         {
             wxLogLastError(wxT("GlobalFree"));
         }
+    }
+
+    // Give ownership of our handle to the caller.
+    HGLOBAL Release()
+    {
+        HGLOBAL h = m_hGlobal;
+        m_hGlobal = NULL;
+        return h;
     }
 
     // implicit conversion
@@ -968,6 +989,7 @@ enum wxWinVersion
     wxWinVersion_8_1 = 0x603,
 
     wxWinVersion_10 = 0x1000,
+    wxWinVersion_11 = 0x1001,
 
     // Any version we can't recognize will be later than the last currently
     // known one, so give it a value greater than any in the known range.
@@ -998,6 +1020,16 @@ WXDLLIMPEXP_CORE wxFont wxCreateFontFromLogFont(const LOGFONT *logFont);
 
 WXDLLIMPEXP_CORE void wxGetCharSize(WXHWND wnd, int *x, int *y, const wxFont& the_font);
 WXDLLIMPEXP_CORE wxFontEncoding wxGetFontEncFromCharSet(int charset);
+
+// Helper function to check if the facename might be truncated: if it is,
+// wxGetMSWFaceNameFromHFONT() should be used to get the full name.
+inline bool wxIsFaceNamePossiblyTruncated(const wxString& facename)
+{
+    return facename.size() == LF_FACESIZE - 1;
+}
+
+// Get full face name (i.e. possibly longer than LF_FACESIZE) from an HFONT.
+wxString wxGetMSWFaceNameFromHFONT(HFONT hFont);
 
 inline void wxSetWindowFont(HWND hwnd, const wxFont& font)
 {

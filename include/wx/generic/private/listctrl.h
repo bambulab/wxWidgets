@@ -189,10 +189,11 @@ public:
             wxASSERT_MSG( m_rectAll.width <= w,
                             wxT("width can only be increased") );
 
+            int delta = (w - m_rectAll.width) / 2;
             m_rectAll.width = w;
-            m_rectLabel.x = m_rectAll.x + (w - m_rectLabel.width) / 2;
-            m_rectIcon.x = m_rectAll.x + (w - m_rectIcon.width) / 2;
-            m_rectHighlight.x = m_rectAll.x + (w - m_rectHighlight.width) / 2;
+            m_rectLabel.x += delta;
+            m_rectIcon.x += delta;
+            m_rectHighlight.x += delta;
         }
     }
     *m_gi;
@@ -287,7 +288,8 @@ public:
                            const wxRect& rect,
                            const wxRect& rectHL,
                            bool highlighted,
-                           bool current );
+                           bool current,
+                           bool checked );
 
 private:
     // set the line to contain num items (only can be > 1 in report mode)
@@ -380,6 +382,9 @@ public:
     bool m_sendSetColumnWidth;
     int m_colToSend;
     int m_widthToSend;
+
+    bool m_sortAsc;
+    int m_sortCol;
 
     virtual wxWindow *GetMainWindowOfCompositeControl() wxOVERRIDE { return GetParent(); }
 
@@ -637,7 +642,7 @@ public:
     void DrawImage( int index, wxDC *dc, int x, int y );
     void GetImageSize( int index, int &width, int &height ) const;
 
-    void SetImageList( wxImageList *imageList, int which );
+    void SetImages( wxWithImages *images, const int which );
     void SetItemSpacing( int spacing, bool isSmall = false );
     int GetItemSpacing( bool isSmall = false );
 
@@ -691,14 +696,15 @@ public:
         SetItem( info );
     }
 
-    wxImageList* GetSmallImageList() const
-        { return m_small_image_list; }
+    wxWithImages* GetSmallImages() const
+        { return m_small_images; }
+
 
     // set the scrollbars and update the positions of the items
-    void RecalculatePositions(bool noRefresh = false);
+    void RecalculatePositions();
 
-    // refresh the window and the header
-    void RefreshAll();
+    // do the same thing and also call Refresh()
+    void RecalculatePositionsAndRefresh();
 
     long GetNextItem( long item, int geometry, int state ) const;
     void DeleteItem( long index );
@@ -808,8 +814,9 @@ protected:
     bool                 m_dirty;
 
     wxColour            *m_highlightColour;
-    wxImageList         *m_small_image_list;
-    wxImageList         *m_normal_image_list;
+    wxWithImages        *m_small_images;
+    wxWithImages        *m_normal_images;
+
     int                  m_small_spacing;
     int                  m_normal_spacing;
     bool                 m_hasFocus;
@@ -890,7 +897,7 @@ protected:
     // get the colour to be used for drawing the rules
     wxColour GetRuleColour() const
     {
-        return wxSystemSettings::GetColour(wxSYS_COLOUR_3DLIGHT);
+        return wxSystemSettings::GetColour(wxSYS_COLOUR_GRAYTEXT);
     }
 
 private:

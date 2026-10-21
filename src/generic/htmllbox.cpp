@@ -404,11 +404,11 @@ void wxHtmlListBox::OnDrawItem(wxDC& dc, const wxRect& rect, size_t n) const
     // draw the selected cell in selected state ourselves if we're using custom
     // colours (to test for this, check the callbacks by passing them any dummy
     // (but valid, to avoid asserts) colour):
+    wxHtmlSelection htmlSel;
     if ( IsSelected(n) &&
             (GetSelectedTextColour(*wxBLACK).IsOk() ||
              GetSelectedTextBgColour(*wxWHITE).IsOk()) )
     {
-        wxHtmlSelection htmlSel;
         htmlSel.Set(wxPoint(0,0), cell, wxPoint(INT_MAX, INT_MAX), cell);
         htmlRendInfo.SetSelection(&htmlSel);
         htmlRendInfo.SetStyle(m_htmlRendStyle);
@@ -488,7 +488,7 @@ void wxHtmlListBox::SetHTMLBackgroundColour(const wxColour& WXUNUSED(clr))
     // nothing to do
 }
 
-void wxHtmlListBox::SetHTMLBackgroundImage(const wxBitmap& WXUNUSED(bmpBg))
+void wxHtmlListBox::SetHTMLBackgroundImage(const wxBitmapBundle& WXUNUSED(bmpBg))
 {
     // nothing to do
 }

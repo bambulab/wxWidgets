@@ -7,23 +7,25 @@
 # Licence:     wxWindows licence
 #############################################################################
 
-include(../../source_groups.cmake)
+if(NOT wxUSE_WEBVIEW)
+    wx_append_install_headers(WEBVIEW_CMN_HDR)
+    return()
+endif()
+
+macro(wx_set_webview2_arch)
+    if(wxPLATFORM_ARCH)
+        set(WEBVIEW2_ARCH ${wxPLATFORM_ARCH})
+    else()
+        set(WEBVIEW2_ARCH x86)
+    endif()
+endmacro()
 
 function(wx_webview_copy_webview2_loader target)
     if(NOT WXMSW OR NOT wxUSE_WEBVIEW_EDGE OR NOT TARGET ${target})
         return()
     endif()
 
-    if(CMAKE_SIZEOF_VOID_P EQUAL 4)
-        set(WEBVIEW2_ARCH x86)
-    else()
-        if ((CMAKE_SYSTEM_PROCESSOR MATCHES "^(ARM64|aarch64)$") OR (CMAKE_GENERATOR_PLATFORM STREQUAL "ARM64"))
-            set(WEBVIEW2_ARCH arm64)
-        else()
-            set(WEBVIEW2_ARCH x64)
-        endif()
-    endif()
-
+    wx_set_webview2_arch()
     add_custom_command(TARGET ${target} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy
         "${WEBVIEW2_PACKAGE_DIR}/build/native/${WEBVIEW2_ARCH}/WebView2Loader.dll"
@@ -32,39 +34,31 @@ endfunction()
 
 
 wx_append_sources(WEBVIEW_FILES WEBVIEW_CMN)
-
 if(WXMSW)
     wx_append_sources(WEBVIEW_FILES WEBVIEW_MSW)
 elseif(WXGTK)
-    if(wxUSE_WEBVIEW_WEBKIT2)
-        wx_append_sources(WEBVIEW_FILES WEBVIEW2_GTK)
-    elseif(wxUSE_WEBVIEW_WEBKIT)
-        wx_append_sources(WEBVIEW_FILES WEBVIEW_GTK)
-    endif()
+    wx_append_sources(WEBVIEW_FILES WEBVIEW_GTK)
 elseif(APPLE)
     wx_append_sources(WEBVIEW_FILES WEBVIEW_OSX_SHARED)
 endif()
 
 wx_add_library(wxwebview ${WEBVIEW_FILES})
 
-if(WXGTK AND wxUSE_WEBVIEW_WEBKIT2)
-    if(wxVERSION_IS_DEV)
-        set(WX_WEB_EXTENSIONS_DIRECTORY "lib/wx/${wxMAJOR_VERSION}.${wxMINOR_VERSION}.${wxRELEASE_NUMBER}/web-extensions")
-    else()
-        set(WX_WEB_EXTENSIONS_DIRECTORY "lib/wx/${wxMAJOR_VERSION}.${wxMINOR_VERSION}/web-extensions")
-    endif()
-endif()
-
 if(APPLE)
     wx_lib_link_libraries(wxwebview PUBLIC "-framework WebKit")
 elseif(WXMSW)
     if(wxUSE_WEBVIEW_EDGE)
         # Update the following variables if updating WebView2 SDK
-        set(WEBVIEW2_VERSION "1.0.1418.22")
+        # Also update this version and the _INTERFACE_DEFINED_ check in
+        # include/wx/msw/private/webview_edge.h and interface/wx/webview.h
+        set(WEBVIEW2_VERSION "1.0.3485.44")
         set(WEBVIEW2_URL "https://www.nuget.org/api/v2/package/Microsoft.Web.WebView2/${WEBVIEW2_VERSION}")
-        set(WEBVIEW2_SHA256 "51d2ef56196e2a9d768a6843385bcb9c6baf9ed34b2603ddb074fb4995543a99")
+        # When updating the above version of WebView2, download the nupkg from the above URL.
+        # Then, from a PowerShell session, call Get-FileHash on the downloaded nupkg file to get its SHA256
+        # to update here.
+        set(WEBVIEW2_SHA256 "BC09150B179246AC90189649B13BE8E6B11B3AC200E817E18DF106E1F3CF489E")
 
-        set(WEBVIEW2_DEFAULT_PACKAGE_DIR "${CMAKE_BINARY_DIR}/packages/Microsoft.Web.WebView2.${WEBVIEW2_VERSION}")
+        set(WEBVIEW2_DEFAULT_PACKAGE_DIR "${CMAKE_CURRENT_BINARY_DIR}/packages/Microsoft.Web.WebView2.${WEBVIEW2_VERSION}")
 
         if(NOT EXISTS ${WEBVIEW2_PACKAGE_DIR})
             unset(WEBVIEW2_PACKAGE_DIR CACHE)
@@ -76,66 +70,108 @@ elseif(WXMSW)
                 ${WEBVIEW2_DEFAULT_PACKAGE_DIR}
         )
 
+        if (WEBVIEW2_PACKAGE_DIR)
+            get_filename_component(currentDir ${WEBVIEW2_PACKAGE_DIR} DIRECTORY)
+            get_filename_component(targetDir ${WEBVIEW2_DEFAULT_PACKAGE_DIR} DIRECTORY)
+            if (currentDir STREQUAL targetDir)
+                get_filename_component(currentVersion ${WEBVIEW2_PACKAGE_DIR} NAME)
+                string(SUBSTRING ${currentVersion} 23 -1 currentVersion)
+                if(${currentVersion} VERSION_LESS ${WEBVIEW2_VERSION})
+                    message(STATUS "Found outdated WebView2 SDK, downloading...")
+                    unset(WEBVIEW2_PACKAGE_DIR CACHE)
+                endif()
+            endif()
+        else()
+            message(STATUS "WebView2 SDK not found, downloading...")
+        endif()
+
         if (NOT WEBVIEW2_PACKAGE_DIR)
-            message(STATUS "WebView2 SDK not found locally, downloading...")
             set(WEBVIEW2_PACKAGE_DIR ${WEBVIEW2_DEFAULT_PACKAGE_DIR} CACHE PATH "WebView2 SDK PATH" FORCE)
             file(DOWNLOAD
                 ${WEBVIEW2_URL}
-                ${CMAKE_BINARY_DIR}/webview2.nuget
-                EXPECTED_HASH SHA256=${WEBVIEW2_SHA256})
+                ${CMAKE_CURRENT_BINARY_DIR}/webview2.nuget
+                EXPECTED_HASH SHA256=${WEBVIEW2_SHA256}
+                STATUS DOWNLOAD_RESULT)
+            # Check that the download was successful.
+            list(GET DOWNLOAD_RESULT 0 DOWNLOAD_RESULT_NUM)
+            if(NOT ${DOWNLOAD_RESULT_NUM} EQUAL 0)
+                list(GET DOWNLOAD_RESULT 1 DOWNLOAD_RESULT_STR)
+                message(FATAL_ERROR "Error ${DOWNLOAD_RESULT_NUM} downloading WebView2 SDK: ${DOWNLOAD_RESULT_STR}.")
+            endif()
             file(MAKE_DIRECTORY ${WEBVIEW2_PACKAGE_DIR})
             execute_process(COMMAND
-                ${CMAKE_COMMAND} -E tar x ${CMAKE_BINARY_DIR}/webview2.nuget
-                WORKING_DIRECTORY ${WEBVIEW2_PACKAGE_DIR}
+                "${CMAKE_COMMAND}" -E tar x "${CMAKE_CURRENT_BINARY_DIR}/webview2.nuget"
+                WORKING_DIRECTORY "${WEBVIEW2_PACKAGE_DIR}"
             )
         endif()
         set(WEBVIEW2_PACKAGE_DIR ${WEBVIEW2_PACKAGE_DIR} CACHE INTERNAL "" FORCE)
 
-        wx_lib_include_directories(wxwebview PRIVATE "${WEBVIEW2_PACKAGE_DIR}/build/native/include")
+        wx_lib_include_directories(wxwebview "${WEBVIEW2_PACKAGE_DIR}/build/native/include")
         if(NOT MSVC)
-            wx_lib_include_directories(wxwebview PRIVATE "${wxSOURCE_DIR}/include/wx/msw/wrl")
+            wx_lib_include_directories(wxwebview "${wxSOURCE_DIR}/include/wx/msw/wrl")
             if (NOT wxBUILD_MONOLITHIC)
                 target_compile_options(wxwebview PRIVATE -Wno-unknown-pragmas)
             endif()
         endif()
 
-        wx_webview_copy_webview2_loader(wxwebview)
+        if (wxUSE_WEBVIEW_EDGE_STATIC)
+            wx_set_webview2_arch()
+            wx_lib_link_directories(wxwebview PUBLIC
+                $<BUILD_INTERFACE:${WEBVIEW2_PACKAGE_DIR}/build/native/${WEBVIEW2_ARCH}/>
+            )
+        else()
+            wx_webview_copy_webview2_loader(wxwebview)
+        endif()
+
     endif()
 elseif(WXGTK)
     if(LIBSOUP_FOUND)
-        wx_lib_include_directories(wxwebview PUBLIC ${LIBSOUP_INCLUDE_DIRS})
+        wx_lib_include_directories(wxwebview ${LIBSOUP_INCLUDE_DIRS})
         wx_lib_link_libraries(wxwebview PUBLIC ${LIBSOUP_LIBRARIES})
     endif()
     if(wxUSE_WEBVIEW_WEBKIT2)
-        wx_lib_include_directories(wxwebview PUBLIC ${WEBKIT2_INCLUDE_DIR})
+        wx_lib_include_directories(wxwebview ${WEBKIT2_INCLUDE_DIR})
         wx_lib_link_libraries(wxwebview PUBLIC ${WEBKIT2_LIBRARIES})
     elseif(wxUSE_WEBVIEW_WEBKIT)
-        wx_lib_include_directories(wxwebview PUBLIC ${WEBKIT_INCLUDE_DIR})
+        wx_lib_include_directories(wxwebview ${WEBKIT_INCLUDE_DIR})
         wx_lib_link_libraries(wxwebview PUBLIC ${WEBKIT_LIBRARIES})
     endif()
 endif()
 
-wx_finalize_lib(wxwebview)
-
 # webkit extension plugin
 # we can't use (all of the) macros and functions because this library should
-# always be build as a shared libary, and not included in the monolithic build.
+# always be built as a shared library, and not included in the monolithic build.
 if(WXGTK AND wxUSE_WEBVIEW_WEBKIT2)
     wx_append_sources(WEBKIT2_EXT_FILES WEBVIEW_WEBKIT2_EXTENSION)
     add_library(wxwebkit2_ext SHARED ${WEBKIT2_EXT_FILES})
-    wx_set_target_properties(wxwebkit2_ext false)
+    wx_set_target_properties(wxwebkit2_ext IS_PLUGIN)
+    set_target_properties(wxwebkit2_ext PROPERTIES NO_SONAME 1)
 
     # Change output name to match expected name in webview_webkit2.cpp: webkit2_ext*
+    set(lib_unicode)
     if(wxUSE_UNICODE)
-        set(lib_unicode u)
+        set(lib_unicode "u")
     endif()
-    set_target_properties(wxwebkit2_ext PROPERTIES PREFIX "")
-    set_target_properties(wxwebkit2_ext PROPERTIES
-        OUTPUT_NAME "webkit2_ext${lib_unicode}-${wxMAJOR_VERSION}.${wxMINOR_VERSION}"
-        OUTPUT_NAME_DEBUG "webkit2_ext${lib_unicode}d-${wxMAJOR_VERSION}.${wxMINOR_VERSION}"
-        )
 
-    target_include_directories(wxwebkit2_ext PUBLIC
+    set(lib_rls)
+    set(lib_dbg)
+    if(WIN32_MSVC_NAMING)
+        set(lib_dbg "d")
+    endif()
+
+    if(wxVERSION_IS_DEV)
+        set(WX_WEB_EXT_VERSION "${wxMAJOR_VERSION}.${wxMINOR_VERSION}.${wxRELEASE_NUMBER}")
+    else()
+        set(WX_WEB_EXT_VERSION "${wxMAJOR_VERSION}.${wxMINOR_VERSION}")
+    endif()
+
+    set_target_properties(wxwebkit2_ext PROPERTIES
+        OUTPUT_NAME       "webkit2_ext${lib_unicode}${lib_rls}-${WX_WEB_EXT_VERSION}"
+        OUTPUT_NAME_DEBUG "webkit2_ext${lib_unicode}${lib_dbg}-${WX_WEB_EXT_VERSION}"
+        PREFIX ""
+    )
+
+    target_include_directories(wxwebkit2_ext PRIVATE
         ${LIBSOUP_INCLUDE_DIRS}
         ${WEBKIT2_INCLUDE_DIR}
         )
@@ -144,7 +180,9 @@ if(WXGTK AND wxUSE_WEBVIEW_WEBKIT2)
         ${WEBKIT2_LIBRARIES}
         )
 
-    wx_install(TARGETS wxwebkit2_ext LIBRARY DESTINATION ${WX_WEB_EXTENSIONS_DIRECTORY})
+    wx_get_install_platform_dir(library)
 
-    add_dependencies(wxwebview wxwebkit2_ext)
+    wx_install(TARGETS wxwebkit2_ext LIBRARY DESTINATION "${library_dir}/wx/${WX_WEB_EXT_VERSION}/web-extensions")
+
+    wx_add_dependencies(wxwebview wxwebkit2_ext)
 endif()

@@ -7,7 +7,10 @@
 # Licence:     wxWindows licence
 #############################################################################
 
-include(../../source_groups.cmake)
+if(NOT wxUSE_AUI)
+    wx_append_install_headers(AUI_CMN_HDR)
+    return()
+endif()
 
 wx_append_sources(AUI_FILES AUI_CMN)
 
@@ -18,5 +21,3 @@ elseif(WXGTK2)
 endif()
 
 wx_add_library(wxaui ${AUI_FILES})
-
-wx_finalize_lib(wxaui)

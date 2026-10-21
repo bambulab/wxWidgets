@@ -141,11 +141,6 @@ void FileTestCase::TempFile()
 // Check that GetSize() works correctly for special files.
 TEST_CASE("wxFile::Special", "[file][linux][special-file]")
 {
-    // LXC containers don't (always) populate /proc and /sys, so skip these
-    // tests there.
-    if ( IsRunningInLXC() )
-        return;
-
     // We can't test /proc/kcore here, unlike in the similar
     // wxFileName::GetSize() test, as wxFile must be able to open it (at least
     // for reading) and usually we don't have the permissions to do it.
@@ -163,8 +158,13 @@ TEST_CASE("wxFile::Special", "[file][linux][special-file]")
     const long pageSize = sysconf(_SC_PAGESIZE);
 
     wxFile fileSys("/sys/power/state");
+    if ( !fileSys.IsOpened() )
+    {
+        WARN("/sys/power/state can't be opened, skipping test");
+        return;
+    }
+
     CHECK( fileSys.Length() == pageSize );
-    CHECK( fileSys.IsOpened() );
     CHECK( fileSys.ReadAll(&s) );
     CHECK( !s.empty() );
     CHECK( s.length() < pageSize );

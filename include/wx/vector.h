@@ -19,6 +19,10 @@
 #include <vector>
 #include <algorithm>
 
+#ifdef wxHAVE_INITIALIZER_LIST
+    #include <initializer_list>
+#endif
+
 #define wxVector std::vector
 template<typename T>
 inline void wxVectorSort(wxVector<T>& v)
@@ -62,6 +66,13 @@ WXDLLIMPEXP_BASE void wxQsort(void* pbase, size_t total_elems,
                               const void* user_data);
 
 #endif // !wxQSORT_DECLARED
+
+// Fix using placement new in case it was redefined as something else, as is
+// done relatively commonly in MSVC debug builds.
+#ifdef __VISUALC__
+    #pragma push_macro("new")
+    #undef new
+#endif
 
 namespace wxPrivate
 {
@@ -338,6 +349,11 @@ public:
         assign(first, last);
     }
 
+#ifdef wxHAVE_INITIALIZER_LIST
+    template<typename U>
+    wxVector(std::initializer_list<U> list) : wxVector(list.begin(), list.end()) {}
+#endif
+
     ~wxVector()
     {
         clear();
@@ -518,6 +534,15 @@ public:
         //     invalidates iterators!
         const size_t idx = it - begin();
         const size_t after = end() - it;
+
+        // Unfortunately gcc 12 still complains about use-after-free even
+        // though our code is correct because it actually optimizes it to be
+        // wrong, with -O2 or higher, by moving the assignment above below the
+        // call to reserve() below, so use this hack to avoid the warning with
+        // it by preventing it from rearranging the code.
+#if wxCHECK_GCC_VERSION(12, 1)
+        __asm__ __volatile__("":::"memory");
+#endif
 
         reserve(size() + count);
 
@@ -705,6 +730,11 @@ inline bool wxVectorContains(const wxVector<T>& v, const T& obj)
 
     return false;
 }
+
+// Restore "new" definition if it we changed it above.
+#ifdef __VISUALC__
+    #pragma pop_macro("new")
+#endif
 
 #endif // wxUSE_STD_CONTAINERS/!wxUSE_STD_CONTAINERS
 

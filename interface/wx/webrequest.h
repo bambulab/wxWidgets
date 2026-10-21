@@ -66,7 +66,7 @@
 
     @section apple_http macOS and iOS App Transport Security
 
-    Starting with macOS 10.11 and iOS 9 an application cannot create unsecure
+    Starting with macOS 10.11 and iOS 9 an application cannot create insecure
     connections (this includes HTTP and unverified HTTPS). You have to include
     additional fields in your Info.plist to enable such connections.
     For further details see the documentation on NSAppTransportSecurity
@@ -788,7 +788,7 @@ public:
     @since 3.1.5
 
     @library{wxnet}
-    @category{net}
+    @category{net,events}
 
     @see wxWebRequest
 */
@@ -799,6 +799,13 @@ public:
         Return the current state of the request
     */
     wxWebRequest::State GetState() const;
+
+    /**
+        Returns a reference to the @c wxWebRequest object which initiated this event.
+
+        @since 3.1.6
+    */
+    const wxWebRequest& GetRequest() const;
 
     /**
         The response with the state set to @c State_Complete or empty response

@@ -24,14 +24,6 @@
 #include "wx/osx/private.h"
 #include "wx/osx/cocoa/private/textimpl.h"
 
-
-@interface wxNSSearchField : NSSearchField
-{
-    BOOL m_withinTextDidChange;
-}
-
-@end
-
 @implementation wxNSSearchField
 
 + (void)initialize
@@ -42,6 +34,21 @@
         initialized = YES;
         wxOSXCocoaClassAddWXMethods( self );
     }
+}
+
+- (void) setFieldEditor:(wxNSTextFieldEditor*) editor
+{
+    if ( editor != fieldEditor )
+    {
+        [editor retain];
+        [fieldEditor release];
+        fieldEditor = editor;
+    }
+}
+
+- (wxNSTextFieldEditor*) fieldEditor
+{
+    return fieldEditor;
 }
 
 - (id)initWithFrame:(NSRect)frame
@@ -68,6 +75,14 @@
         impl->controlTextDidChange();
 }
 
+- (void)controlTextDidEndEditing:(NSNotification *) aNotification
+{
+    wxUnusedVar(aNotification);
+    wxWidgetCocoaImpl* impl = (wxWidgetCocoaImpl* ) wxWidgetImpl::FindFromWXWidget( self );
+    if ( impl )
+        impl->DoNotifyFocusLost();
+}
+
 - (NSArray *)control:(NSControl *)control textView:(NSTextView *)textView completions:(NSArray *)words
  forPartialWordRange:(NSRange)charRange indexOfSelectedItem:(int*)index
 {
@@ -76,9 +91,8 @@
     wxUnusedVar(index);
 
     NSMutableArray* matches = NULL;
-    NSString*       partialString;
-    
-    partialString = [[textView string] substringWithRange:charRange];
+    // NSString*       partialString;
+    // partialString = [[textView string] substringWithRange:charRange];
     matches       = [NSMutableArray array];
     
     // wxTextWidgetImpl* impl = (wxTextWidgetImpl* ) wxWidgetImpl::FindFromWXWidget( self );

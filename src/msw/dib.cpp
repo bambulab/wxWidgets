@@ -414,10 +414,14 @@ HBITMAP wxDIB::ConvertToBitmap(const BITMAPINFO *pbmi, HDC hdc, const void *bits
         switch ( pbmih->biCompression )
         {
             case BI_BITFIELDS:
-                numColors = 3;
+                // with a classic BITMAPINFOHEADER, there are 3 colour-mask DWORDs
+                // after the header. Otherwise the masks are part of the header
+                numColors = pbmih->biSize == sizeof(BITMAPINFOHEADER) ? 3 : 0;
                 break;
 
             case BI_RGB:
+            case BI_RLE8:
+            case BI_RLE4:
                 // biClrUsed has the number of colors but it may be not initialized at
                 // all
                 numColors = pbmih->biClrUsed;
@@ -432,7 +436,10 @@ HBITMAP wxDIB::ConvertToBitmap(const BITMAPINFO *pbmi, HDC hdc, const void *bits
                 numColors = 0;
         }
 
-        bits = reinterpret_cast<const char*>(pbmih + 1) + numColors * sizeof(RGBQUAD);
+        // pbmih->biSize might not be the same as sizeof(BITMAPINFOHEADER)
+        // (such as in the case of a BITMAPV4HEADER or BITMAPV5HEADER);
+        // we need to advance by the number of bytes actually present
+        bits = reinterpret_cast<const char*>(pbmih) + pbmih->biSize + numColors * sizeof(RGBQUAD);
     }
 
     HBITMAP hbmp = ::CreateDIBitmap
@@ -760,6 +767,13 @@ bool wxDIB::Create(const wxImage& image, PixelFormat pf, int dstDepth)
                     *dst++ = src[2];
                     *dst++ = src[1];
                     *dst++ = src[0];
+
+                    // If source has no alpha, but the DIB does have it, we
+                    // need to still fill it, even if there is no real
+                    // transparency.
+                    if ( dstDepth == 32 )
+                        *dst++ = wxALPHA_OPAQUE;
+
                     src += 3;
                 }
             }

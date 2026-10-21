@@ -7,7 +7,10 @@
 # Licence:     wxWindows licence
 #############################################################################
 
-include(../../source_groups.cmake)
+if(NOT wxUSE_OPENGL)
+    wx_append_install_headers(OPENGL_CMN_HDR)
+    return()
+endif()
 
 wx_append_sources(GL_FILES OPENGL_CMN)
 
@@ -21,10 +24,10 @@ elseif(WXOSX_IPHONE)
     wx_append_sources(GL_FILES OPENGL_OSX_IPHONE)
 elseif(WXQT)
     wx_append_sources(GL_FILES OPENGL_QT)
+elseif(WXX11)
+    wx_append_sources(GL_FILES OPENGL_X11)
 endif()
 
 wx_add_library(wxgl ${GL_FILES})
-wx_lib_include_directories(wxgl PUBLIC ${OPENGL_INCLUDE_DIR})
+wx_lib_include_directories(wxgl ${OPENGL_INCLUDE_DIR})
 wx_lib_link_libraries(wxgl PUBLIC ${OPENGL_LIBRARIES})
-
-wx_finalize_lib(wxgl)

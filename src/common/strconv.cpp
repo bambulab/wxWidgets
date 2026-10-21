@@ -38,6 +38,7 @@
 #ifdef HAVE_ICONV
     #include <iconv.h>
     #include "wx/thread.h"
+    #include "wx/private/glibc.h"
 #endif
 
 #include "wx/encconv.h"
@@ -711,7 +712,7 @@ size_t wxMBConvUTF7::ToWChar(wchar_t *dst, size_t dstLen,
                     len++;
                     src++;
                 }
-                else if ( utf7unb64[(unsigned)*src] == 0xff )
+                else if ( utf7unb64[(unsigned char)*src] == 0xff )
                 {
                     // empty encoded chunks are not allowed
                     if ( !len )
@@ -1595,8 +1596,8 @@ wxMBConvUTF16straight::ToWChar(wchar_t *dst, size_t dstLen,
 
     const size_t inLen = srcLen / BYTES_PER_CHAR;
     size_t outLen = 0;
-    const wxUint16 *inBuff = reinterpret_cast<const wxUint16 *>(src);
-    for ( const wxUint16 * const inEnd = inBuff + inLen; inBuff < inEnd; )
+    const wxChar16 *inBuff = reinterpret_cast<const wxChar16 *>(src);
+    for ( const wxChar16 * const inEnd = inBuff + inLen; inBuff < inEnd; )
     {
         const wxUint32 ch = wxDecodeSurrogate(&inBuff, inEnd);
         if ( !inBuff )
@@ -1665,11 +1666,11 @@ wxMBConvUTF16swap::ToWChar(wchar_t *dst, size_t dstLen,
 
     const size_t inLen = srcLen / BYTES_PER_CHAR;
     size_t outLen = 0;
-    const wxUint16 *inBuff = reinterpret_cast<const wxUint16 *>(src);
-    for ( const wxUint16 * const inEnd = inBuff + inLen; inBuff < inEnd; )
+    const wxChar16 *inBuff = reinterpret_cast<const wxChar16 *>(src);
+    for ( const wxChar16 * const inEnd = inBuff + inLen; inBuff < inEnd; )
     {
-        wxUint16 tmp[2];
-        const wxUint16* tmpEnd = tmp;
+        wxChar16 tmp[2];
+        const wxChar16* tmpEnd = tmp;
 
         tmp[0] = wxUINT16_SWAP_ALWAYS(*inBuff);
         tmpEnd++;
@@ -1681,7 +1682,7 @@ wxMBConvUTF16swap::ToWChar(wchar_t *dst, size_t dstLen,
             tmpEnd++;
         }
 
-        const wxUint16* p = tmp;
+        const wxChar16* p = tmp;
         const wxUint32 ch = wxDecodeSurrogate(&p, tmpEnd);
         if ( !p )
             return wxCONV_FAILED;
@@ -2037,7 +2038,7 @@ wxMBConvUTF32swap::FromWChar(char *dst, size_t dstLen,
 //     bytes-left-in-input buffer is non-zero. Hence, this alternative test for
 //     iconv() failure.
 //     [This bug does not appear in glibc 2.2.]
-#if defined(__GLIBC__) && __GLIBC__ == 2 && __GLIBC_MINOR__ <= 1
+#if wxCHECK_GLIBC_VERSION(2, 0) && !wxCHECK_GLIBC_VERSION(2, 2)
 #define ICONV_FAILED(cres, bufLeft) ((cres == (size_t)-1) && \
                                      (errno != E2BIG || bufLeft != 0))
 #else
@@ -2343,13 +2344,13 @@ wxMBConv_iconv::ToWChar(wchar_t *dst, size_t dstLen,
         do
         {
             char* bufPtr = (char*)tbuf;
-            dstLen = 8 * SIZEOF_WCHAR_T;
+            dstLen = sizeof(tbuf);
 
             cres = iconv(m2w,
                          ICONV_CHAR_CAST(&pszPtr), &srcLen,
                          &bufPtr, &dstLen );
 
-            res += 8 - (dstLen / SIZEOF_WCHAR_T);
+            res += (sizeof(tbuf) - dstLen) / SIZEOF_WCHAR_T;
         }
         while ((cres == (size_t)-1) && (errno == E2BIG));
     }
@@ -2821,7 +2822,7 @@ void wxCSConv::SetEncoding(wxFontEncoding encoding)
                 // It's ok to not have encoding value if we have a name for it.
                 m_encoding = wxFONTENCODING_SYSTEM;
             }
-            else // No name neither.
+            else // No name either.
             {
                 // Fall back to the system default encoding in this case (not
                 // sure how much sense does this make but this is how the old
@@ -2926,7 +2927,11 @@ void wxCSConv::SetName(const char *charset)
 WX_DECLARE_HASH_MAP( wxFontEncoding, wxString, wxIntegerHash, wxIntegerEqual,
                      wxEncodingNameCache );
 
-static wxEncodingNameCache gs_nameCache;
+wxEncodingNameCache& GetEncodingNameCache()
+{
+    static wxEncodingNameCache s_nameCache;
+    return s_nameCache;
+}
 #endif
 
 wxMBConv *wxCSConv::DoCreate() const
@@ -2980,8 +2985,9 @@ wxMBConv *wxCSConv::DoCreate() const
         }
 #if wxUSE_FONTMAP
         {
-            const wxEncodingNameCache::iterator it = gs_nameCache.find(encoding);
-            if ( it != gs_nameCache.end() )
+            wxEncodingNameCache& nameCache = GetEncodingNameCache();
+            const wxEncodingNameCache::iterator it = nameCache.find(encoding);
+            if ( it != nameCache.end() )
             {
                 if ( it->second.empty() )
                     return NULL;
@@ -3009,14 +3015,14 @@ wxMBConv *wxCSConv::DoCreate() const
                     wxMBConv_iconv *conv = new wxMBConv_iconv(name.ToAscii());
                     if ( conv->IsOk() )
                     {
-                        gs_nameCache[encoding] = *names;
+                        nameCache[encoding] = *names;
                         return conv;
                     }
 
                     delete conv;
                 }
 
-                gs_nameCache[encoding] = wxT(""); // cache the failure
+                nameCache[encoding] = wxT(""); // cache the failure
             }
         }
 #endif // wxUSE_FONTMAP

@@ -260,7 +260,7 @@ private:
 };
 
 // ----------------------------------------------------------------------------
-// an helper dialog used by MyFrame::OnStartGUIThread
+// a helper dialog used by MyFrame::OnStartGUIThread
 // ----------------------------------------------------------------------------
 
 class MyImageDialog: public wxDialog
@@ -827,7 +827,7 @@ MyImageDialog::MyImageDialog(wxFrame *parent)
 
     CentreOnScreen();
 
-    // NOTE: no need to lock m_csBmp until the thread isn't started:
+    // NOTE: no need to lock m_csBmp until the thread has started:
 
     // create the bitmap
     if (!m_bmp.Create(GUITHREAD_BMP_SIZE,GUITHREAD_BMP_SIZE) || !m_bmp.IsOk())
@@ -919,6 +919,10 @@ MyThread::~MyThread()
 
 wxThread::ExitCode MyThread::Entry()
 {
+    // setting thread name helps with debugging, as the debugger
+    // may be able to show thread names along with the list of threads.
+    SetName("My Thread");
+
     wxLogMessage("Thread started (priority = %u).", GetPriority());
 
     for ( m_count = 0; m_count < 10; m_count++ )
@@ -970,6 +974,10 @@ void MyWorkerThread::OnExit()
 
 wxThread::ExitCode MyWorkerThread::Entry()
 {
+    // setting thread name helps with debugging, as the debugger
+    // may be able to show thread names along with the list of threads.
+    SetName("Worker Thread");
+
 #if TEST_YIELD_RACE_CONDITION
     if ( TestDestroy() )
         return NULL;

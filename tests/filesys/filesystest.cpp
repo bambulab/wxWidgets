@@ -4,6 +4,7 @@
 // Author:      Vaclav Slavik
 // Created:     2004-03-28
 // Copyright:   (c) 2004 Vaclav Slavik
+//              (c) 2026 wxWidgets development team
 ///////////////////////////////////////////////////////////////////////////////
 
 // ----------------------------------------------------------------------------
@@ -18,6 +19,7 @@
 #endif // WX_PRECOMP
 
 #include "wx/filesys.h"
+#include "wx/sysopt.h"
 
 #if wxUSE_FILESYSTEM
 
@@ -45,6 +47,32 @@ public:
 
 
 };
+
+
+#if wxUSE_SYSTEM_OPTIONS
+class TempSystemOption
+{
+public:
+    TempSystemOption(const wxString& name, int value)
+        : m_name(name),
+          m_value(wxSystemOptions::GetOption(name)),
+          m_hadValue(wxSystemOptions::HasOption(name))
+    {
+        wxSystemOptions::SetOption(name, value);
+    }
+
+    ~TempSystemOption()
+    {
+        wxSystemOptions::SetOption(m_name,
+                                   m_hadValue ? m_value : wxString());
+    }
+
+private:
+    const wxString m_name;
+    const wxString m_value;
+    const bool m_hadValue;
+};
+#endif // wxUSE_SYSTEM_OPTIONS
 
 
 // ----------------------------------------------------------------------------
@@ -134,6 +162,20 @@ TEST_CASE("wxFileSystem::URLParsing", "[filesys][url][parse]")
     }
 }
 
+TEST_CASE("wxFileSystem::HTMLMimeFallback", "[filesys][mime]")
+{
+#if wxUSE_MIMETYPE && wxUSE_SYSTEM_OPTIONS
+    TempSystemOption noMimeManager("filesys.no-mimetypesmanager", 1);
+#endif
+
+    CHECK(wxFileSystemHandler::GetMimeTypeFromExt("index.htm") ==
+          "text/html");
+    CHECK(wxFileSystemHandler::GetMimeTypeFromExt("index.html") ==
+          "text/html");
+    CHECK(wxFileSystemHandler::GetMimeTypeFromExt("INDEX.HTML") ==
+          "text/html");
+}
+
 TEST_CASE("wxFileSystem::FileNameToUrlConversion", "[filesys][url][filename]")
 {
     const static struct Data {
@@ -177,7 +219,7 @@ TEST_CASE("wxFileSystem::UnicodeFileNameToUrlConversion", "[filesys][url][filena
 }
 
 // Test that using FindFirst() after removing a previously found URL works:
-// this used to be broken, see https://trac.wxwidgets.org/ticket/18744
+// this used to be broken, see https://github.com/wxWidgets/wxWidgets/issues/18744
 TEST_CASE("wxFileSystem::MemoryFSHandler", "[filesys][memoryfshandler][find]")
 {
     // Install wxMemoryFSHandler just for the duration of this test.

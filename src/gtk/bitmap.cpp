@@ -16,8 +16,10 @@
     #include "wx/image.h"
     #include "wx/colour.h"
     #include "wx/cursor.h"
+    #include "wx/dc.h"
 #endif
 
+#include "wx/math.h"
 #include "wx/rawbmp.h"
 
 #include "wx/gtk/private/object.h"
@@ -388,13 +390,13 @@ wxBitmapRefData::~wxBitmapRefData()
     if (m_surface)
         cairo_surface_destroy(m_surface);
 #else
-    if (m_pixbufMask)
-        g_object_unref(m_pixbufMask);
     if (m_pixmap)
         g_object_unref (m_pixmap);
     if (m_pixbuf)
         g_object_unref (m_pixbuf);
 #endif
+    if (m_pixbufMask)
+        g_object_unref(m_pixbufMask);
     delete m_mask;
 }
 
@@ -588,7 +590,7 @@ static void CopyImageData(
 
 #if wxUSE_IMAGE
 #ifdef __WXGTK3__
-wxBitmap::wxBitmap(const wxImage& image, int depth, double scale)
+void wxBitmap::InitFromImage(const wxImage& image, int depth, double scale)
 {
     wxCHECK_RET(image.IsOk(), "invalid image");
 
@@ -635,7 +637,7 @@ wxBitmap::wxBitmap(const wxImage& image, int depth, double scale)
     }
 }
 #else
-wxBitmap::wxBitmap(const wxImage& image, int depth, double WXUNUSED(scale))
+void wxBitmap::InitFromImage(const wxImage& image, int depth, double WXUNUSED(scale))
 {
     wxCHECK_RET(image.IsOk(), "invalid image");
 
@@ -780,6 +782,16 @@ bool wxBitmap::CreateFromImageAsPixbuf(const wxImage& image)
     return true;
 }
 #endif
+
+wxBitmap::wxBitmap(const wxImage& image, int depth, double scale)
+{
+    InitFromImage(image, depth, scale);
+}
+
+wxBitmap::wxBitmap(const wxImage& image, const wxDC& dc)
+{
+    InitFromImage(image, -1, dc.GetContentScaleFactor());
+}
 
 wxImage wxBitmap::ConvertToImage() const
 {
@@ -988,18 +1000,31 @@ void wxBitmap::SetMask( wxMask *mask )
     }
 }
 
-bool wxBitmap::CopyFromIcon(const wxIcon& icon)
+#ifdef __WXGTK3__
+bool wxBitmap::Create(int width, int height, const wxDC& dc)
 {
-    *this = icon;
-    return IsOk();
+    return DoCreate(wxSize(width, height),
+                    dc.GetContentScaleFactor(),
+                    wxBITMAP_SCREEN_DEPTH);
 }
 
-#ifdef __WXGTK3__
-bool wxBitmap::CreateScaled(int w, int h, int depth, double scale)
+bool wxBitmap::DoCreate(const wxSize& size, double scale, int depth)
 {
-    Create(int(w * scale), int(h * scale), depth);
+    Create(size*scale, depth);
     M_BMPDATA->m_scaleFactor = scale;
     return true;
+}
+
+void wxBitmap::SetScaleFactor(double scale)
+{
+    wxCHECK_RET(m_refData, "invalid bitmap");
+
+    if ( M_BMPDATA->m_scaleFactor != scale )
+    {
+        AllocExclusive();
+
+        M_BMPDATA->m_scaleFactor = scale;
+    }
 }
 
 double wxBitmap::GetScaleFactor() const
@@ -1028,15 +1053,22 @@ static cairo_surface_t* GetSubSurface(cairo_surface_t* surface, const wxRect& re
 }
 #endif
 
-wxBitmap wxBitmap::GetSubBitmap( const wxRect& rect) const
+wxBitmap wxBitmap::GetSubBitmap(const wxRect& r) const
 {
     wxBitmap ret;
 
     wxCHECK_MSG(IsOk(), ret, wxT("invalid bitmap"));
 
+    const wxBitmapRefData* bmpData = M_BMPDATA;
+#ifdef __WXGTK3__
+    const double s = bmpData->m_scaleFactor;
+    const wxRect rect(int(r.x * s), int(r.y * s), int(r.width * s), int(r.height * s));
+#else
+    const wxRect& rect = r;
+#endif
+
     const int w = rect.width;
     const int h = rect.height;
-    const wxBitmapRefData* bmpData = M_BMPDATA;
 
     wxCHECK_MSG(rect.x >= 0 && rect.y >= 0 &&
                 rect.x + w <= bmpData->m_width &&
@@ -1316,18 +1348,35 @@ void wxBitmap::SetSourceSurface(cairo_t* cr, int x, int y, const wxColour* fg, c
         return;
     }
 
+    const GdkPixbuf* const pixbuf = bmpData->m_pixbufNoMask;
+
     // Silently ignore attempts to draw uninitialized bitmap,
     // because other platforms don't complain about it
-    if (bmpData->m_pixbufNoMask == NULL)
+    if (pixbuf == NULL)
         return;
 
     if (bmpData->m_bpp == 1)
         SetSourceSurface1(bmpData, cr, x, y, fg, bg);
-    else
+    else if (size_t(bmpData->m_width) * bmpData->m_height < 3000 * 3000)
     {
-        gdk_cairo_set_source_pixbuf(cr, bmpData->m_pixbufNoMask, x, y);
+        // This uses cairo_surface_create_similar_image(), which results in
+        // a faster-drawing surface on X11, but requires more memory and
+        // restricts the maximum size to considerably less than a
+        // CAIRO_SURFACE_TYPE_IMAGE, so don't use it for very large sizes.
+        gdk_cairo_set_source_pixbuf(cr, pixbuf, x, y);
         cairo_pattern_get_surface(cairo_get_source(cr), &bmpData->m_surface);
         cairo_surface_reference(bmpData->m_surface);
+    }
+    else
+    {
+        cairo_surface_t* surf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1, 1);
+        cairo_t* cr2 = cairo_create(surf);
+        cairo_surface_destroy(surf);
+        gdk_cairo_set_source_pixbuf(cr2, pixbuf, 0, 0);
+        cairo_pattern_get_surface(cairo_get_source(cr2), &bmpData->m_surface);
+        cairo_surface_reference(bmpData->m_surface);
+        cairo_destroy(cr2);
+        cairo_set_source_surface(cr, bmpData->m_surface, x, y);
     }
 }
 
@@ -1389,7 +1438,18 @@ void wxBitmap::Draw(cairo_t* cr, int x, int y, bool useMask, const wxColour* fg,
     if (useMask && bmpData->m_mask)
         mask = *bmpData->m_mask;
     if (mask)
-        cairo_mask_surface(cr, mask, x, y);
+    {
+        cairo_pattern_t* pattern = cairo_pattern_create_for_surface(mask);
+        cairo_pattern_set_filter(pattern, CAIRO_FILTER_NEAREST);
+        if (x || y)
+        {
+            cairo_matrix_t matrix;
+            cairo_matrix_init_translate(&matrix, -x, -y);
+            cairo_pattern_set_matrix(pattern, &matrix);
+        }
+        cairo_mask(cr, pattern);
+        cairo_pattern_destroy(pattern);
+    }
     else
         cairo_paint(cr);
 }

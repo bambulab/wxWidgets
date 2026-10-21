@@ -288,6 +288,10 @@ TEST_CASE("wxArrayString", "[dynarray]")
     CHECK( a1.Index( wxT("thermit"), /*bCase=*/true, /*fromEnd=*/true ) == 3 );
     CHECK( a1.Index( wxT("alligator"), /*bCase=*/true, /*fromEnd=*/true ) == 4 );
 
+    a1.push_back(wxT("alligator"));
+    CHECK(a1.Index(wxT("alligator")) == 4);
+    CHECK(a1.Index(wxT("alligator"), /*bCase=*/true, /*fromEnd=*/true) == 5);
+
     wxArrayString a5;
 
     CHECK( a5.Add( wxT("x"), 1 ) == 0 );
@@ -336,6 +340,21 @@ TEST_CASE("wxArrayString", "[dynarray]")
     CHECK( a7.size() == 1 );
 
     wxCLANG_WARNING_RESTORE(self-assign-overloaded)
+
+#ifdef wxHAVE_INITIALIZER_LIST
+    wxArrayString a8( { wxT("dog"), wxT("human"), wxT("condor"), wxT("thermit"), wxT("alligator") } );
+    CHECK( a8.size() == 5 );
+    CHECK( a8[1] == "human" );
+    CHECK( a8[4] == "alligator" );
+
+    a8 = { wxT("Foo") };    // Test operator=
+    CHECK( a8.size() == 1 );
+    CHECK( a8[0] == "Foo" );
+
+    // Same test with std::initializer_list<std::string>
+    wxArrayString a9( { std::string("dog"), std::string("human"), std::string("condor"), std::string("thermit"), std::string("alligator") } );
+    CHECK( a9.size() == 5 );
+#endif // wxHAVE_INITIALIZER_LIST
 }
 
 TEST_CASE("wxSortedArrayString", "[dynarray]")
@@ -580,6 +599,14 @@ TEST_CASE("wxObjArrayPtr", "[dynarray]")
     CHECK( barptrs.size() == 0 );
 }
 
+#ifdef wxHAVE_INITIALIZER_LIST
+    #define TestArrayWithInitializerListOf(name)                              \
+        wxArray##name c({1,2,3});                                             \
+        CHECK(c.size() == 3);
+#else
+    #define TestArrayWithInitializerListOf(name)    // No support for initializer_list
+#endif
+
 #define TestArrayOf(name)                                                     \
                                                                               \
 TEST_CASE("wxDynArray::" #name, "[dynarray]")                                 \
@@ -619,6 +646,8 @@ TEST_CASE("wxDynArray::" #name, "[dynarray]")                                 \
     CHECK( b.Index( 5 ) == 2 );                                      \
     CHECK( b.Index( 6 ) == wxNOT_FOUND );                            \
     CHECK( b.Index( 17 ) == 3 );                                     \
+                                                                     \
+    TestArrayWithInitializerListOf(name)                             \
 }
 
 TestArrayOf(UShort)
@@ -759,17 +788,18 @@ TEST_CASE("wxDynArray::IndexFromEnd", "[dynarray]")
     a.push_back(10);
     a.push_back(1);
     a.push_back(42);
+    a.push_back(42);
 
     CHECK( a.Index(10) == 0 );
     CHECK( a.Index(1) == 1 );
     CHECK( a.Index(42) == 2 );
     CHECK( a.Index(10, /*bFromEnd=*/true) == 0 );
     CHECK( a.Index( 1, /*bFromEnd=*/true) == 1 );
-    CHECK( a.Index(42, /*bFromEnd=*/true) == 2 );
+    CHECK( a.Index(42, /*bFromEnd=*/true) == 3 );
 }
 
 
-TEST_CASE("wxNaturalStringComparisonGeneric()", "[wxString][compare]")
+TEST_CASE("wxCmpNaturalGeneric", "[wxString][compare]")
 {
     // simple string comparison
     CHECK(wxCmpNaturalGeneric("a", "a") == 0);
@@ -844,3 +874,9 @@ TEST_CASE("wxNaturalStringComparisonGeneric()", "[wxString][compare]")
     CHECK(wxCmpNaturalGeneric("a5th 5", "a 10th 10") > 0);
 }
 
+TEST_CASE("wxCmpNatural", "[wxString][compare]")
+{
+    // We can't expect much from the native natural comparison function as it's
+    // locale-dependent, so just run a simple sanity test
+    CHECK(wxCmpNatural("same", "same") == 0);
+}
