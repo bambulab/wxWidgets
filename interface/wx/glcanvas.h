@@ -656,7 +656,7 @@ enum
 
         @since 3.1.0
     */
-    wx_GL_COMPAT_PROFILE,
+    WX_GL_COMPAT_PROFILE,
 
     /**
         Request a forward-compatible context.
@@ -772,11 +772,10 @@ enum
         On those platforms which use a configure script (e.g. Linux and macOS)
         OpenGL support is automatically enabled if the relative headers and
         libraries are found.
-        To switch it on under the other platforms (e.g. Windows), you need to edit
-        the @c setup.h file and set @c wxUSE_GLCANVAS to @c 1 and then also pass
-        @c USE_OPENGL=1 to the make utility. You may also need to add @c opengl32.lib
-        (and @c glu32.lib for old OpenGL versions) to the list of the libraries
-        your program is linked with.
+        On Windows, OpenGL support is enabled by default (@c wxUSE_GLCANVAS set
+        to @c 1 in the @c setup.h file). If your program links with wxWidgets
+        statically, you need to add @c opengl32.lib (and @c glu32.lib for old
+        OpenGL versions) to the list of the libraries your program is linked with.
 
     @library{wxgl}
     @category{gl}
@@ -878,6 +877,19 @@ public:
                long style = 0,
                const wxString& name = "GLCanvas",
                const wxPalette& palette = wxNullPalette);
+
+
+    /**
+       Re-creates EGLSurface. To be used after a reparent or other
+       changes that may invalidate the EGL drawing surface.
+
+       Only available when wxUSE_GLCANVAS_EGL is enabled.
+
+       @return @true if surface is successfully recreated
+
+       @since 3.2.3
+    */
+    bool CreateSurface();
 
     /**
         Determines if a canvas having the specified attributes is available.

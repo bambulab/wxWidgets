@@ -326,7 +326,6 @@ bool wxHtmlHelpWindow::Create(wxWindow* parent, wxWindowID id,
     // The sizer for the whole top-level window.
     wxSizer *topWindowSizer = new wxBoxSizer(wxVERTICAL);
     SetSizer(topWindowSizer);
-    SetAutoLayout(true);
 
 #if wxUSE_TOOLBAR
     // toolbar?
@@ -1069,7 +1068,6 @@ void wxHtmlHelpWindow::RefreshLists()
 void wxHtmlHelpWindow::ReadCustomization(wxConfigBase *cfg, const wxString& path)
 {
     wxString oldpath;
-    wxString tmp;
 
     if (!path.empty())
     {
@@ -1127,7 +1125,6 @@ void wxHtmlHelpWindow::ReadCustomization(wxConfigBase *cfg, const wxString& path
 void wxHtmlHelpWindow::WriteCustomization(wxConfigBase *cfg, const wxString& path)
 {
     wxString oldpath;
-    wxString tmp;
 
     if (!path.empty())
     {

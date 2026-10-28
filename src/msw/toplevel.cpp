@@ -34,6 +34,7 @@
     #include "wx/module.h"
 #endif //WX_PRECOMP
 
+#include "wx/dynlib.h"
 #include "wx/scopeguard.h"
 #include "wx/tooltip.h"
 
@@ -326,6 +327,13 @@ WXLRESULT wxTopLevelWindowMSW::MSWWindowProc(WXUINT message, WXWPARAM wParam, WX
     return rc;
 }
 
+void
+wxTopLevelWindowMSW::MSWUpdateFontOnDPIChange(const wxSize& WXUNUSED(newDPI))
+{
+    if ( !m_icons.IsEmpty() )
+        DoSetIcons();
+}
+
 bool wxTopLevelWindowMSW::CreateDialog(const void *dlgTemplate,
                                        const wxString& title,
                                        const wxPoint& pos,
@@ -495,8 +503,23 @@ bool wxTopLevelWindowMSW::Create(wxWindow *parent,
     {
         EnableCloseButton(false);
     }
-
-    InheritAttributes();
+    else
+    {
+        // Work around a Windows bug: the system menu is created on demand
+        // (it's a Win16 optimization se
+        // https://devblogs.microsoft.com/oldnewthing/20100528-00/?p=13893/)
+        // and -- the buggy part -- when it does get created, its handle is
+        // owned by the process which called GetSystemMenu() which might not be
+        // this process at all but, for example, Explorer, which apparently
+        // needs the system menu to show the taskbar icon for the application.
+        // Because of this, if Explorer is killed, our system menu HMENU
+        // becomes invalid and using it breaks in weird ways (see #26799).
+        //
+        // Eagerly create the system menu here to avoid this problem. Note that
+        // EnableCloseButton() already calls GetSystemMenu() so we don't need
+        // to do it in the "if" branch above.
+        ::GetSystemMenu(GetHwnd(), FALSE);
+    }
 
     // for standard dialogs the dialog manager generates WM_CHANGEUISTATE
     // itself but for custom windows we have to do it ourselves in order to
@@ -700,7 +723,7 @@ bool wxTopLevelWindowMSW::IsMaximized() const
 
 void wxTopLevelWindowMSW::Iconize(bool iconize)
 {
-    if ( iconize == MSWIsIconized() )
+    if ( iconize == IsIconized() )
     {
         // Do nothing, in particular don't restore non-iconized windows when
         // Iconize(false) is called as this would wrongly un-maximize them.
@@ -766,9 +789,9 @@ bool wxTopLevelWindowMSW::Destroy()
     // Under Windows 10 iconized windows don't get any messages, so delayed
     // destruction doesn't work for them if we don't force a message dispatch
     // here (and it doesn't seem useful to test for MSWIsIconized() as doing
-    // this doesn't do any harm for non-iconized windows neither). For that
+    // this doesn't do any harm for non-iconized windows either). For that
     // matter, doing this shouldn't do any harm under previous OS versions
-    // neither, so checking for the OS version doesn't seem useful too.
+    // either, so checking for the OS version doesn't seem useful too.
     wxWakeUpIdle();
 
     return true;
@@ -868,7 +891,7 @@ wxTopLevelWindowMSW::MSWGetCreateWindowCoords(const wxPoint& pos,
     else
     {
         // OTOH, if x is not set to CW_USEDEFAULT, y shouldn't be set to it
-        // neither because it is not handled as a special value by Windows then
+        // either because it is not handled as a special value by Windows then
         // and so we have to choose some default value for it, even if a
         // completely arbitrary one
         static const int DEFAULT_Y = 200;
@@ -1044,8 +1067,54 @@ void wxTopLevelWindowMSW::SetIcons(const wxIconBundle& icons)
         return;
     }
 
-    DoSelectAndSetIcon(icons, SM_CXSMICON, SM_CYSMICON, ICON_SMALL);
-    DoSelectAndSetIcon(icons, SM_CXICON, SM_CYICON, ICON_BIG);
+    DoSetIcons();
+}
+
+void wxTopLevelWindowMSW::DoSetIcons()
+{
+    DoSelectAndSetIcon(m_icons, SM_CXSMICON, SM_CYSMICON, ICON_SMALL);
+    DoSelectAndSetIcon(m_icons, SM_CXICON, SM_CYICON, ICON_BIG);
+}
+
+wxContentProtection wxTopLevelWindowMSW::GetContentProtection() const
+{
+#if wxUSE_DYNLIB_CLASS
+    typedef BOOL(WINAPI *GetWindowDisplayAffinity_t)(HWND, DWORD *);
+
+    wxDynamicLibrary dllUser32("user32.dll");
+    GetWindowDisplayAffinity_t pfnGetWindowDisplayAffinity =
+        (GetWindowDisplayAffinity_t)dllUser32.RawGetSymbol("GetWindowDisplayAffinity");
+    if (pfnGetWindowDisplayAffinity)
+    {
+        DWORD affinity = 0;
+        if (!pfnGetWindowDisplayAffinity(GetHWND(), &affinity))
+            wxLogLastError("GetWindowDisplayAffinity");
+        else if (affinity & WDA_MONITOR)
+            return wxCONTENT_PROTECTION_ENABLED;
+    }
+#endif
+    return wxCONTENT_PROTECTION_NONE;
+}
+
+bool wxTopLevelWindowMSW::SetContentProtection(wxContentProtection contentProtection)
+{
+#if wxUSE_DYNLIB_CLASS
+    typedef BOOL(WINAPI *SetWindowDisplayAffinity_t)(HWND, DWORD);
+
+    wxDynamicLibrary dllUser32("user32.dll");
+    SetWindowDisplayAffinity_t pfnSetWindowDisplayAffinity =
+        (SetWindowDisplayAffinity_t)dllUser32.RawGetSymbol("SetWindowDisplayAffinity");
+    if (pfnSetWindowDisplayAffinity)
+    {
+        if (pfnSetWindowDisplayAffinity(GetHWND(),
+            (contentProtection == wxCONTENT_PROTECTION_ENABLED) ?
+            WDA_MONITOR : WDA_NONE))
+            return true;
+        else
+            wxLogLastError("SetWindowDisplayAffinity");
+    }
+#endif
+    return false;
 }
 
 // static

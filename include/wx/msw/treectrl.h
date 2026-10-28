@@ -212,6 +212,8 @@ protected:
 
     virtual bool MSWShouldSetDefaultFont() const wxOVERRIDE { return false; }
 
+    virtual void OnImagesChanged() wxOVERRIDE;
+
     // SetImageList helper
     void SetAnyImageList(wxImageList *imageList, int which);
 
@@ -300,6 +302,8 @@ private:
 
     // Delete the given item from the native control.
     bool MSWDeleteItem(const wxTreeItemId& item);
+
+    void OnDPIChanged(wxDPIChangedEvent& event);
 
 
     // the hash storing the items attributes (indexed by item ids)

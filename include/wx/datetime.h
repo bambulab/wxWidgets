@@ -125,7 +125,7 @@ extern WXDLLIMPEXP_DATA_BASE(const wxDateTime) wxDefaultDateTime;
 // wxDateTime represents an absolute moment in the time
 // ----------------------------------------------------------------------------
 
-class WXDLLIMPEXP_BASE wxDateTime
+class WXDLLIMPEXP_BASE wxWARN_UNUSED wxDateTime
 {
 public:
     // types
@@ -148,7 +148,7 @@ public:
         Local,
 
         // zones from GMT (= Greenwich Mean Time): they're guaranteed to be
-        // consequent numbers, so writing something like `GMT0 + offset' is
+        // consequent numbers, so writing something like `GMT0 + offset` is
         // safe if abs(offset) <= 12
 
         // underscore stands for minus
@@ -1070,7 +1070,7 @@ public:
     // if the overloads above were used.
     //
     // And then we also have to provide the overloads for wxCStrData, as usual.
-    // Unfortunately those ones can't return anything as we don't have any
+    // Unfortunately those can't return anything as we don't have any
     // sufficiently long-lived wxAnyStrPtr to return from them: any temporary
     // strings it would point to would be destroyed when this function returns
     // making it impossible to dereference the return value. So we just don't
@@ -1149,6 +1149,10 @@ private:
 
     // assign the preferred first day of a week to flags, if necessary
     void UseEffectiveWeekDayFlags(WeekFlags &flags) const;
+
+    // parse time zone (e.g. "+0100") between [iterator,dateEnd)
+    bool ParseRFC822TimeZone(wxString::const_iterator* iterator,
+                             const wxString::const_iterator& dateEnd);
 
     // the internal representation of the time is the amount of milliseconds
     // elapsed since the origin which is set by convention to the UNIX/C epoch
@@ -1617,9 +1621,11 @@ protected:
 
 inline bool wxDateTime::IsInStdRange() const
 {
-    // currently we don't know what is the real type of time_t so prefer to err
-    // on the safe side and limit it to 32 bit values which is safe everywhere
-    return m_time >= 0l && (m_time / TIME_T_FACTOR) < wxINT32_MAX;
+    // if sizeof(time_t) is greater than 32 bits, we assume it
+    // is safe to return values exceeding wxINT32_MAX
+
+    return m_time >= 0l &&
+        ( (sizeof(time_t) > 4 ) || ( (m_time / TIME_T_FACTOR) < wxINT32_MAX) );
 }
 
 /* static */
@@ -1726,7 +1732,7 @@ inline time_t wxDateTime::GetTicks() const
         return (time_t)-1;
     }
 
-    return (time_t)((m_time / (long)TIME_T_FACTOR).ToLong()) + WX_TIME_BASE_OFFSET;
+    return (time_t)((m_time / TIME_T_FACTOR).GetValue()) + WX_TIME_BASE_OFFSET;
 }
 
 inline bool wxDateTime::SetToLastWeekDay(WeekDay weekday,

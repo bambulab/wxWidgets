@@ -98,6 +98,8 @@ bool wxStaticBox::Create(wxWindow *parent,
         SetBackgroundStyle(wxBG_STYLE_PAINT);
     }
 
+    Bind(wxEVT_DPI_CHANGED, &wxStaticBox::OnDPIChanged, this);
+
     return true;
 }
 
@@ -306,6 +308,12 @@ WXLRESULT wxStaticBox::MSWWindowProc(WXUINT nMsg, WXWPARAM wParam, WXLPARAM lPar
     return wxControl::MSWWindowProc(nMsg, wParam, lParam);
 }
 
+void wxStaticBox::OnDPIChanged(wxDPIChangedEvent& WXUNUSED(event))
+{
+    if ( m_labelWin )
+        PositionLabelWindow();
+}
+
 // ----------------------------------------------------------------------------
 // static box drawing
 // ----------------------------------------------------------------------------
@@ -374,8 +382,8 @@ RECT AdjustRectForRtl(wxLayoutDirection dir, RECT const& childRect, RECT const& 
         // The clipping region too is mirrored in RTL layout.
         // We need to mirror screen coordinates relative to static box window priot to
         // intersecting with region.
-        ret.right = boxRect.right - childRect.left - boxRect.left;
-        ret.left = boxRect.right - childRect.right - boxRect.left;
+        ret.right = boxRect.right - (childRect.left - boxRect.left);
+        ret.left = boxRect.left + (boxRect.right - childRect.right);
     }
 
     return ret;
@@ -498,7 +506,7 @@ void wxStaticBox::PaintForeground(wxDC& dc, const RECT&)
 
 #if wxUSE_UXTHEME
     // when using XP themes, neither setting the text colour nor transparent
-    // background mode doesn't change anything: the static box def window proc
+    // background mode changes anything: the static box def window proc
     // still draws the label in its own colours, so we need to redraw the text
     // ourselves if we have a non default fg colour
     if ( m_hasFgCol && wxUxThemeIsActive() && !m_labelWin )
@@ -636,10 +644,10 @@ void wxStaticBox::OnPaint(wxPaintEvent& WXUNUSED(event))
                 labelRect.GetLeft() - gap - border,
                 borderTop,
                 &memdc, border, 0);
-        dc.Blit(labelRect.GetRight() + gap, 0,
-                rc.right - (labelRect.GetRight() + gap),
-                borderTop,
-                &memdc, border, 0);
+
+        const int xStart = labelRect.GetRight() + gap;
+        dc.Blit(xStart, 0, rc.right - xStart, borderTop,
+                &memdc, xStart, 0);
     }
     else
     {

@@ -341,20 +341,21 @@ void TextFileTestCase::ReadBig()
 // correspond to the real amount of data in them, works.
 TEST_CASE("wxTextFile::Special", "[textfile][linux][special-file]")
 {
-    // LXC containers don't (always) populate /proc and /sys, so skip these
-    // tests there.
-    if ( IsRunningInLXC() )
-        return;
-
     SECTION("/proc")
     {
         wxTextFile f;
-        CHECK( f.Open("/proc/cpuinfo") );
+        REQUIRE( f.Open("/proc/cpuinfo") );
         CHECK( f.GetLineCount() > 1 );
     }
 
     SECTION("/sys")
     {
+        if ( wxFile::Exists("/sys/power/state") )
+        {
+            WARN("/sys/power/state doesn't exist, skipping test");
+            return;
+        }
+
         wxTextFile f;
         CHECK( f.Open("/sys/power/state") );
         REQUIRE( f.GetLineCount() == 1 );

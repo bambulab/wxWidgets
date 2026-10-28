@@ -3,6 +3,7 @@
 // Purpose:     wxFileSystem class - interface for opening files
 // Author:      Vaclav Slavik
 // Copyright:   (c) 1999 Vaclav Slavik
+//              (c) 2026 wxWidgets development team
 // Licence:     wxWindows licence
 /////////////////////////////////////////////////////////////////////////////
 
@@ -47,6 +48,25 @@ const wxString& wxFSFile::GetMimeType() const
 // ----------------------------------------------------------------------------
 
 wxIMPLEMENT_ABSTRACT_CLASS(wxFileSystemHandler, wxObject);
+
+
+static wxString GetMimeTypeFromExtFallback(const wxString& ext)
+{
+    if ( ext.IsSameAs("htm", false) ||
+         ext.IsSameAs("html", false) )
+        return "text/html";
+    if ( ext.IsSameAs("jpg", false) ||
+         ext.IsSameAs("jpeg", false) )
+        return "image/jpeg";
+    if ( ext.IsSameAs("gif", false) )
+        return "image/gif";
+    if ( ext.IsSameAs("png", false) )
+        return "image/png";
+    if ( ext.IsSameAs("bmp", false) )
+        return "image/bmp";
+
+    return wxString();
+}
 
 
 /* static */
@@ -118,30 +138,19 @@ wxString wxFileSystemHandler::GetMimeTypeFromExt(const wxString& location)
         }
 
         wxFileType *ft = wxTheMimeTypesManager->GetFileTypeFromExtension(ext);
-        if ( !ft || !ft -> GetMimeType(&mime) )
+        if ( ft && ft->GetMimeType(&mime) && !mime.empty() )
         {
-            mime.clear();
+            delete ft;
+            return mime;
         }
 
         delete ft;
-
-        return mime;
     }
 #endif // wxUSE_MIMETYPE
 
-    // Without wxUSE_MIMETYPE, recognize just a few hardcoded special cases.
-    if ( ext.IsSameAs(wxT("htm"), false) || ext.IsSameAs(wxT("html"), false) )
-        return wxT("text/html");
-    if ( ext.IsSameAs(wxT("jpg"), false) || ext.IsSameAs(wxT("jpeg"), false) )
-        return wxT("image/jpeg");
-    if ( ext.IsSameAs(wxT("gif"), false) )
-        return wxT("image/gif");
-    if ( ext.IsSameAs(wxT("png"), false) )
-        return wxT("image/png");
-    if ( ext.IsSameAs(wxT("bmp"), false) )
-        return wxT("image/bmp");
-
-    return wxString();
+    // Recognize just a few hardcoded special cases if wxUSE_MIMETYPE is
+    // disabled or if the MIME manager did not know the MIME type.
+    return GetMimeTypeFromExtFallback(ext);
 }
 
 
@@ -478,16 +487,17 @@ wxFSFile* wxFileSystem::OpenFile(const wxString& location, int flags)
     m_LastName.clear();
 
     // try relative paths first :
-    if (meta != wxT(':'))
+    if (meta != wxT(':') && !m_Path.empty())
     {
+        const wxString fullloc = m_Path + loc;
         node = m_Handlers.GetFirst();
         while (node)
         {
             wxFileSystemHandler *h = (wxFileSystemHandler*) node -> GetData();
-            if (h->CanOpen(m_Path + loc))
+            if (h->CanOpen(fullloc))
             {
-                s = MakeLocal(h)->OpenFile(*this, m_Path + loc);
-                if (s) { m_LastName = m_Path + loc; break; }
+                s = MakeLocal(h)->OpenFile(*this, fullloc);
+                if (s) { m_LastName = fullloc; break; }
             }
             node = node->GetNext();
         }

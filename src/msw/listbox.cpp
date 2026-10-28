@@ -64,6 +64,20 @@ public:
     wxString GetName() const wxOVERRIDE
         { return m_parent->GetString(GetIndex()); }
 
+protected:
+    void
+    GetColourToUse(wxODStatus stat,
+                   wxColour& colText,
+                   wxColour& colBack) const wxOVERRIDE
+    {
+        wxOwnerDrawn::GetColourToUse(stat, colText, colBack);
+
+        // Default background colour for the owner drawn items is the menu one,
+        // but it's not appropriate for the listboxes, so override it here.
+        if ( !(stat & wxODSelected) && !GetBackgroundColour().IsOk() )
+            colBack = wxSystemSettings::GetColour(wxSYS_COLOUR_LISTBOX);
+    }
+
 private:
     wxListBox *m_parent;
 };
@@ -642,7 +656,7 @@ wxSize wxListBox::DoGetBestClientSize() const
     wListbox += wxSystemSettings::GetMetric(wxSYS_VSCROLL_X, m_parent);
 
     // don't make the listbox too tall (limit height to 10 items) but don't
-    // make it too small neither
+    // make it too small either
     int hListbox = SendMessage(GetHwnd(), LB_GETITEMHEIGHT, 0, 0)*
                     wxMin(wxMax(m_noItems, 3), 10);
 

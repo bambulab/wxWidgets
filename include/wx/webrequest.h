@@ -117,9 +117,11 @@ public:
     wxString GetDataFile() const;
 
 protected:
-    // Ctor is used by wxWebRequest and wxWebRequestImpl.
+    // Ctor is used by wxWebRequest and implementation classes to create public
+    // objects from the existing implementation pointers.
     friend class wxWebRequest;
     friend class wxWebRequestImpl;
+    friend class wxWebResponseImpl;
     explicit wxWebResponse(const wxWebResponseImplPtr& impl);
 
     wxWebResponseImplPtr m_impl;
@@ -193,8 +195,11 @@ public:
     bool IsPeerVerifyDisabled() const;
 
 private:
-    // Ctor is only used by wxWebSession.
+    // Ctor is used by wxWebSession and implementation classes to create
+    // wxWebRequest objects from the existing implementation pointers.
     friend class wxWebSession;
+    friend class wxWebRequestImpl;
+    friend class wxWebResponseImpl;
     explicit wxWebRequest(const wxWebRequestImplPtr& impl);
 
     wxWebRequestImplPtr m_impl;
@@ -258,14 +263,17 @@ public:
     wxWebRequestEvent(wxEventType type = wxEVT_NULL,
                       int id = wxID_ANY,
                       wxWebRequest::State state = wxWebRequest::State_Idle,
+                      const wxWebRequest& request = wxWebRequest(),
                       const wxWebResponse& response = wxWebResponse(),
                       const wxString& errorDesc = wxString())
         : wxEvent(id, type),
-        m_state(state), m_response(response),
+        m_state(state), m_request(request), m_response(response),
         m_errorDescription(errorDesc)
     { }
 
     wxWebRequest::State GetState() const { return m_state; }
+
+    const wxWebRequest& GetRequest() const { return m_request; }
 
     const wxWebResponse& GetResponse() const { return m_response; }
 
@@ -285,6 +293,7 @@ public:
 
 private:
     wxWebRequest::State m_state;
+    const wxWebRequest m_request;
     const wxWebResponse m_response; // may be invalid
     wxString m_dataFile;
     wxMemoryBuffer m_dataBuf;

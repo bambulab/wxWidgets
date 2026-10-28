@@ -16,6 +16,7 @@
 #include "wx/defs.h"
 
 #include <CoreFoundation/CoreFoundation.h>
+#include <CoreGraphics/CoreGraphics.h>      // At least for CGFloat
 
 #include "wx/osx/core/cfstring.h"
 #include "wx/osx/core/cfdataref.h"
@@ -68,14 +69,33 @@ WXDLLIMPEXP_BASE CFURLRef wxOSXCreateURLFromFileSystemPath( const wxString& path
 
 #if wxUSE_GUI
 
-#if wxOSX_USE_IPHONE
-#include <CoreGraphics/CoreGraphics.h>
-#else
+#if !wxOSX_USE_IPHONE
 #include <ApplicationServices/ApplicationServices.h>
+
+#if __MAC_OS_X_VERSION_MAX_ALLOWED < MAC_OS_X_VERSION_10_12
+    #define NSCompositingOperationClear             NSCompositeClear
+    #define NSCompositingOperationCopy              NSCompositeCopy
+    #define NSCompositingOperationSourceOver        NSCompositeSourceOver
+    #define NSCompositingOperationSourceIn          NSCompositeSourceIn
+    #define NSCompositingOperationSourceOut         NSCompositeSourceOut
+    #define NSCompositingOperationSourceAtop        NSCompositeSourceAtop
+    #define NSCompositingOperationDestinationOver   NSCompositeDestinationOver
+    #define NSCompositingOperationDestinationIn     NSCompositeDestinationIn
+    #define NSCompositingOperationDestinationOut    NSCompositeDestinationOut
+    #define NSCompositingOperationDestinationAtop   NSCompositeDestinationAtop
+    #define NSCompositingOperationExclusion         NSCompositeExclusion
+    #define NSCompositingOperationPlusLighter       NSCompositePlusLighter
+    #define NSCompositingOperationDifference        NSCompositeDifference
+    #define NSCompositingOperationSourceOver        NSCompositeSourceOver
 #endif
 
-#include "wx/bitmap.h"
+#endif
+
+#include "wx/bmpbndl.h"
 #include "wx/window.h"
+#include "wx/toplevel.h"
+
+class wxTextProofOptions;
 
 class WXDLLIMPEXP_CORE wxMacCGContextStateSaver
 {
@@ -158,11 +178,12 @@ public :
     }
 
     virtual ~wxMenuItemImpl() ;
-    virtual void SetBitmap( const wxBitmap& bitmap ) = 0;
+    virtual void SetBitmap( const wxBitmapBundle& bitmap ) = 0;
     virtual void Enable( bool enable ) = 0;
     virtual void Check( bool check ) = 0;
     virtual void SetLabel( const wxString& text, wxAcceleratorEntry *entry ) = 0;
     virtual void Hide( bool hide = true ) = 0;
+    virtual void SetAllowsKeyEquivalentWhenHidden( bool ) {}
 
     virtual void * GetHMenuItem() = 0;
 
@@ -335,7 +356,7 @@ public :
     virtual wxInt32     GetValue() const = 0;
     virtual void        SetValue( wxInt32 v ) = 0;
     virtual wxBitmap    GetBitmap() const = 0;
-    virtual void        SetBitmap( const wxBitmap& bitmap ) = 0;
+    virtual void        SetBitmap( const wxBitmapBundle& bitmap ) = 0;
     virtual void        SetBitmapPosition( wxDirection dir ) = 0;
     virtual void        SetupTabs( const wxNotebook& WXUNUSED(notebook) ) {}
     virtual int         TabHitTest( const wxPoint & WXUNUSED(pt), long *flags ) {*flags=1; return -1;}
@@ -344,8 +365,10 @@ public :
     virtual void        Enable( bool enable ) = 0;
     virtual void        SetMinimum( wxInt32 v ) = 0;
     virtual void        SetMaximum( wxInt32 v ) = 0;
+    virtual void        SetIncrement(int value) = 0;
     virtual wxInt32     GetMinimum() const = 0;
     virtual wxInt32     GetMaximum() const = 0;
+    virtual int         GetIncrement() const = 0;
     virtual void        PulseGauge() = 0;
     virtual void        SetScrollThumb( wxInt32 value, wxInt32 thumbSize ) = 0;
 
@@ -360,6 +383,16 @@ public :
     virtual void        InstallEventHandler( WXWidget control = NULL ) = 0;
 
     virtual bool        EnableTouchEvents(int eventsMask) = 0;
+
+    virtual void        ClipsToBounds(bool clip);
+
+    // scrolling views need a clip subview that acts as parent for native children
+    // (except for the scollbars) which are children of the view itself
+    virtual void        AdjustClippingView(wxScrollBar* horizontal, wxScrollBar* vertical);
+    virtual void        UseClippingView(bool clip);
+
+    // returns native view which acts as a parent for native children
+    virtual WXWidget    GetContainer() const;
 
     // Mechanism used to keep track of whether a change should send an event
     // Do SendEvents(false) when starting actions that would trigger programmatic events
@@ -489,7 +522,7 @@ public :
     static wxWidgetImplType*    CreateBitmapToggleButton( wxWindowMac* wxpeer,
                                     wxWindowMac* parent,
                                     wxWindowID id,
-                                    const wxBitmap& bitmap,
+                                    const wxBitmapBundle& bitmap,
                                     const wxPoint& pos,
                                     const wxSize& size,
                                     long style,
@@ -498,7 +531,7 @@ public :
     static wxWidgetImplType*    CreateBitmapButton( wxWindowMac* wxpeer,
                                     wxWindowMac* parent,
                                     wxWindowID id,
-                                    const wxBitmap& bitmap,
+                                    const wxBitmapBundle& bitmap,
                                     const wxPoint& pos,
                                     const wxSize& size,
                                     long style,
@@ -584,7 +617,7 @@ public :
     static wxWidgetImplType*    CreateStaticBitmap( wxWindowMac* wxpeer,
                                                    wxWindowMac* parent,
                                                    wxWindowID id,
-                                                   const wxBitmap& bitmap,
+                                                   const wxBitmapBundle& bitmap,
                                                    const wxPoint& pos,
                                                    const wxSize& size,
                                                    long style,
@@ -730,16 +763,22 @@ public :
     virtual void Undo() ;
     virtual bool CanRedo() const;
     virtual void Redo() ;
+    virtual void EmptyUndoBuffer() ;
     virtual int GetNumberOfLines() const ;
     virtual long XYToPosition(long x, long y) const;
     virtual bool PositionToXY(long pos, long *x, long *y) const ;
     virtual void ShowPosition(long pos) ;
     virtual int GetLineLength(long lineNo) const ;
     virtual wxString GetLineText(long lineNo) const ;
-    virtual void CheckSpelling(bool WXUNUSED(check)) { }
+#if wxUSE_SPELLCHECK
+    virtual void CheckSpelling(const wxTextProofOptions& WXUNUSED(options)) { }
+    virtual wxTextProofOptions GetCheckingOptions() const;
+#endif // wxUSE_SPELLCHECK
     virtual void EnableAutomaticQuoteSubstitution(bool WXUNUSED(enable)) {}
     virtual void EnableAutomaticDashSubstitution(bool WXUNUSED(enable)) {}
 
+    virtual void EnableNewLineReplacement(bool WXUNUSED(enable)) {}
+    virtual bool GetNewLineReplacement() { return true; }
     virtual wxSize GetBestSize() const { return wxDefaultSize; }
 
     virtual bool SetHint(const wxString& WXUNUSED(hint)) { return false; }
@@ -822,7 +861,7 @@ class wxButtonImpl
     wxButtonImpl(){}
     virtual ~wxButtonImpl(){}
 
-    virtual void SetPressedBitmap( const wxBitmap& bitmap ) = 0;
+    virtual void SetPressedBitmap( const wxBitmapBundle& bitmap ) = 0;
 } ;
 
 //
@@ -952,9 +991,12 @@ public :
 
     virtual void ShowWithoutActivating() { Show(true); }
 
-    virtual bool EnableFullScreenView(bool enable) = 0;
+    virtual bool EnableFullScreenView(bool enable, long style) = 0;
 
     virtual bool ShowFullScreen(bool show, long style)= 0;
+
+    virtual wxContentProtection GetContentProtection() const = 0;
+    virtual bool SetContentProtection(wxContentProtection contentProtection) = 0;
 
     virtual void RequestUserAttention(int flags) = 0;
 

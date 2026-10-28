@@ -89,7 +89,7 @@ enum wxListColumnFormat
     wxLIST_FORMAT_CENTER = wxLIST_FORMAT_CENTRE
 };
 
-/// Autosize values for SetColumnWidth
+/// Values for SetColumnWidth()
 enum
 {
     wxLIST_AUTOSIZE = -1,
@@ -147,10 +147,43 @@ enum
     To intercept events from a list control, use the event table macros described
     in wxListEvent.
 
-    <b>wxMac Note</b>: Starting with wxWidgets 2.8, wxListCtrl uses a native
-    implementation for report mode, and uses a generic implementation for other
-    modes. You can use the generic implementation for report mode as well by setting
-    the @c mac.listctrl.always_use_generic system option (see wxSystemOptions) to 1.
+    @note The native wxOSX implementation for report mode that was added in wxWidgets
+    2.8 was removed in wxWidgets 3.1, meaning for wxWidgets 3.1+ wxOSX uses the generic
+    implementation for all modes.
+
+    @section column_order Column Ordering
+
+    By default, the columns of a list control appear on the screen in order
+    of their indices, i.e. column 0 appears first, then column 1 next,
+    and so on. However this can be changed by using the SetColumnsOrder() function
+    to arbitrarily reorder the columns visual order.
+
+    The user can also rearrange the columns interactively by dragging them.
+    In this case, the index of the column is not the same as its order and
+    the functions GetColumnOrder() and GetColumnIndexFromOrder() should be
+    used to translate between them.
+
+    @note All the other functions still work with the column indices,
+    i.e. the visual positioning of the columns on screen doesn't affect the
+    code setting or getting their values for example.
+
+    Example of reordering columns:
+    @code
+        wxListCtrl *list = new wxListCtrl(...);
+        for ( int i = 0; i < 3; i++ )
+            list->InsertColumn(i, wxString::Format("Column %d", i));
+
+        wxArrayInt order(3);
+        order[0] = 2;
+        order[1] = 0;
+        order[2] = 1;
+        list->SetColumnsOrder(order);
+
+        // now list->GetColumnsOrder() will return order and
+        // list->GetColumnIndexFromOrder(n) will return order[n] and
+        // list->GetColumnOrder() will return 1, 2 and 0 for the column 0,
+        // 1 and 2 respectively
+    @endcode
 
 
     @beginStyleTable
@@ -343,10 +376,15 @@ public:
     bool Arrange(int flag = wxLIST_ALIGN_DEFAULT);
 
     /**
-        Sets the image list associated with the control and takes ownership of it
-        (i.e. the control will, unlike when using SetImageList(), delete the list
-        when destroyed). @a which is one of @c wxIMAGE_LIST_NORMAL, @c wxIMAGE_LIST_SMALL,
-        @c wxIMAGE_LIST_STATE (the last is unimplemented).
+        Sets the image list associated with the control and takes ownership of it.
+
+        Not that it is recommended to use SetNormalImages() or SetSmallImages()
+        instead of this function in the new code.
+
+        After calling this function the control will, unlike when using
+        SetImageList(), delete the list when destroyed. @a which must be one of
+        @c wxIMAGE_LIST_NORMAL, @c wxIMAGE_LIST_SMALL, @c wxIMAGE_LIST_STATE
+        (support for the last one is unimplemented).
 
         @see SetImageList()
     */
@@ -517,17 +555,30 @@ public:
 
     /**
         Gets information about this column.
+
         See SetItem() for more information.
 
         @beginWxPerlOnly
         In wxPerl this method takes only the @a col parameter and
         returns a @c Wx::ListItem (or @c undef).
         @endWxPerlOnly
+
+        @param col The column index. It must be valid, i.e. positive or 0 and
+            strictly less than GetColumnCount(). The function asserts if this
+            is not the case.
+        @param item Output parameter filled with the information about the
+            column on successful return.
+        @return Always @true if the column index is valid.
     */
     bool GetColumn(int col, wxListItem& item) const;
 
     /**
         Returns the number of columns.
+
+        The control can have multiple columns only in wxLC_REPORT mode. In
+        wxLC_LIST mode this function returns 1, as a list is still considered
+        to have a (single) column. In wxLC_SMALL_ICON and wxLC_ICON modes, it
+        returns 0 as there are no columns at all.
     */
     int GetColumnCount() const;
 
@@ -538,8 +589,10 @@ public:
         corresponds to the value of the element number @a pos in the array
         returned by GetColumnsOrder().
 
-        Please see SetColumnsOrder() documentation for an example and
-        additional remarks about the columns ordering.
+        @note This function makes sense for report view only and currently is only
+        implemented in the wxMSW port. Use @c wxHAS_LISTCTRL_COLUMN_ORDER to guard uses
+        of this function so that they will start working under the other platforms when
+        support for the column reordering is added there.
 
         @see GetColumnOrder()
     */
@@ -552,8 +605,10 @@ public:
         given visual position, e.g. calling it with @a col equal to 0 returns
         the index of the first shown column.
 
-        Please see SetColumnsOrder() documentation for an example and
-        additional remarks about the columns ordering.
+        @note This function makes sense for report view only and currently is only
+        implemented in the wxMSW port. Use @c wxHAS_LISTCTRL_COLUMN_ORDER to guard uses
+        of this function so that they will start working under the other platforms when
+        support for the column reordering is added there.
 
         @see GetColumnsOrder(), GetColumnIndexFromOrder()
     */
@@ -569,8 +624,10 @@ public:
 
         On error, an empty array is returned.
 
-        Please see SetColumnsOrder() documentation for an example and
-        additional remarks about the columns ordering.
+        @note This function makes sense for report view only and currently is only
+        implemented in the wxMSW port. Use @c wxHAS_LISTCTRL_COLUMN_ORDER to guard uses
+        of this function so that they will start working under the other platforms when
+        support for the column reordering is added there.
 
         @see GetColumnOrder(), GetColumnIndexFromOrder()
     */
@@ -617,7 +674,7 @@ public:
     /**
         Returns the colour for this item.
         If the item has no specific colour, returns an invalid colour
-        (and not the default background control of the control itself).
+        (and not the default background colour of the control itself).
 
         @see GetItemTextColour()
     */
@@ -690,7 +747,7 @@ public:
         Returns the colour for this item.
 
         If the item has no specific colour, returns an invalid colour (and not the
-        default foreground control of the control itself as this wouldn't allow
+        default foreground colour of the control itself as this wouldn't allow
         distinguishing between items having the same colour as the current control
         foreground and items with default colour which, hence, have always the
         same colour as the control).
@@ -835,9 +892,10 @@ public:
 
         If @a ptrSubItem is not @NULL and the wxListCtrl is in the report
         mode the subitem (or column) number will also be provided.
-        This feature is only available in version 2.7.0 or higher and is currently only
-        implemented under wxMSW and requires at least comctl32.dll of version 4.70 on
-        the host system or the value stored in @a ptrSubItem will be always -1.
+        This feature is available since version 3.2.7 in the generic control;
+        in earlier versions the value stored in @a ptrSubItem will be always -1.
+        Under wxMSW, the feature is available since version 2.7.0, and requires
+        at least comctl32.dll of version 4.70 on the host system.
         To compile this feature into wxWidgets library you need to have access to
         commctrl.h of version 4.70 that is provided by Microsoft.
 
@@ -999,6 +1057,10 @@ public:
 
         Note that the wxWindow::GetBackgroundColour() function of wxWindow base
         class can be used to retrieve the current background colour.
+
+        @note If alternate row colouring is enabled, then call
+        EnableAlternateRowColours() again after changing the background colour. This
+        will update the alternate row color to match the new background colour.
     */
     virtual bool SetBackgroundColour(const wxColour& col);
 
@@ -1027,17 +1089,6 @@ public:
     /**
         Changes the order in which the columns are shown.
 
-        By default, the columns of a list control appear on the screen in order
-        of their indices, i.e. the column 0 appears first, the column 1 next
-        and so on. However by using this function it is possible to arbitrarily
-        reorder the columns visual order and the user can also rearrange the
-        columns interactively by dragging them. In this case, the index of the
-        column is not the same as its order and the functions GetColumnOrder()
-        and GetColumnIndexFromOrder() should be used to translate between them.
-        Notice that all the other functions still work with the column indices,
-        i.e. the visual positioning of the columns on screen doesn't affect the
-        code setting or getting their values for example.
-
         The @a orders array must have the same number elements as the number of
         columns and contain each position exactly once. Its n-th element
         contains the index of the column to be shown in n-th position, so for a
@@ -1045,28 +1096,9 @@ public:
         results in the third column being displayed first, the first one next
         and the second one last.
 
-        Example of using it:
-        @code
-            wxListCtrl *list = new wxListCtrl(...);
-            for ( int i = 0; i < 3; i++ )
-                list->InsertColumn(i, wxString::Format("Column %d", i));
-
-            wxArrayInt order(3);
-            order[0] = 2;
-            order[1] = 0;
-            order[2] = 1;
-            list->SetColumnsOrder(order);
-
-            // now list->GetColumnsOrder() will return order and
-            // list->GetColumnIndexFromOrder(n) will return order[n] and
-            // list->GetColumnOrder() will return 1, 2 and 0 for the column 0,
-            // 1 and 2 respectively
-        @endcode
-
-        Please notice that this function makes sense for report view only and
-        currently is only implemented in wxMSW port. To avoid explicit tests
-        for @c __WXMSW__ in your code, please use @c wxHAS_LISTCTRL_COLUMN_ORDER
-        as this will allow it to start working under the other platforms when
+        @note This function makes sense for report view only and currently is only
+        implemented in the wxMSW port. Use @c wxHAS_LISTCTRL_COLUMN_ORDER to guard uses
+        of this function so that they will start working under the other platforms when
         support for the column reordering is added there.
 
         @see GetColumnsOrder()
@@ -1095,15 +1127,57 @@ public:
     /**
         Sets the image list associated with the control.
 
-        @a which is one of @c wxIMAGE_LIST_NORMAL, @c wxIMAGE_LIST_SMALL,
-        @c wxIMAGE_LIST_STATE (the last is unimplemented).
+        Not that it is recommended to use SetNormalImages() or SetSmallImages()
+        instead of this function in the new code.
+
+        @a which must be one of @c wxIMAGE_LIST_NORMAL, @c wxIMAGE_LIST_SMALL,
+        @c wxIMAGE_LIST_STATE (support for the last one is unimplemented).
 
         This method does not take ownership of the image list, you have to
         delete it yourself.
 
+        Note that, unlike for most of the other methods of this class, it is
+        possible to call this function before the corresponding window is
+        created, i.e. do it in a constructor of a class derived from wxListCtrl
+        before calling Create().
+
         @see AssignImageList()
     */
     void SetImageList(wxImageList* imageList, int which);
+
+    /**
+        Sets the images to use when showing large, normal icons in this control.
+
+        These images are used by the items when the list control is in
+        wxLC_ICON mode, in all the other modes the images set by
+        SetSmallImages() are used.
+
+        This function should be preferred to calling SetImageList() or
+        AssignImageList() with @c wxIMAGE_LIST_NORMAL argument in the new code,
+        as using wxBitmapBundle makes it possible to specify multiple versions
+        of the icons, allowing the control to choose the right one for the
+        current DPI scaling.
+
+        @since 3.1.6
+     */
+    void SetNormalImages(const wxVector<wxBitmapBundle>& images);
+
+    /**
+        Sets the images to use when showing small icons in this control.
+
+        These images are used by the items when the list control is in
+        wxLC_SMALL_ICON or wxLC_REPORT mode, use SetNormalImages() for the
+        icons used in wxLC_ICON mode.
+
+        This function should be preferred to calling SetImageList() or
+        AssignImageList() with @c wxIMAGE_LIST_SMALL argument in the new code,
+        as using wxBitmapBundle makes it possible to specify multiple versions
+        of the icons, allowing the control to choose the right one for the
+        current DPI scaling.
+
+        @since 3.1.6
+     */
+    void SetSmallImages(const wxVector<wxBitmapBundle>& images);
 
     /**
         Check if the item is visible.
@@ -1314,6 +1388,8 @@ public:
 
         Always returns false if checkboxes support hadn't been enabled.
 
+        For a control with @c wxLC_VIRTUAL style, this uses OnGetItemIsChecked().
+
         @param item Item (zero-based) index.
 
         @since 3.1.0
@@ -1326,6 +1402,10 @@ public:
         This method only works if checkboxes support had been successfully
         enabled using EnableCheckBoxes().
 
+        For a control with @c wxLC_VIRTUAL style, this will only generate the
+        @c EVT_LIST_ITEM_CHECKED and @c EVT_LIST_ITEM_UNCHECKED events. See
+        OnGetItemIsChecked() for information on how to update the checkbox state.
+
         @param item Item (zero-based) index.
         @param check If @true, check the item, otherwise uncheck.
 
@@ -1336,7 +1416,7 @@ public:
     /**
         Extend rules and alternate rows background to the entire client area.
 
-        Bu default, the rules (when enabled with wxLC_HRULES and wxLC_VRULES)
+        By default, the rules (when enabled with wxLC_HRULES and wxLC_VRULES)
         and alternate row background (when EnableAlternateRowColours() was
         called) are only shown in the part of the control occupied by the
         items, which can be smaller than the entire window if there are few
@@ -1359,6 +1439,79 @@ public:
         @since 3.1.5
     */
     void ExtendRulesAndAlternateColour(bool extend = true);
+
+    /**
+        Show the sort indicator of a specific column in a specific direction.
+
+        Sort indicators are only shown in report view and in the native wxMSW
+        version override any column icon, i.e. if the sort indicator is shown
+        for a column, no (other) icon is shown.
+
+        This function should typically be called from EVT_LIST_COL_CLICK
+        handler.
+
+        @note This does not actually sort the list, use SortItems() for this.
+
+        @param col
+            The column to set the sort indicator for.
+            If @c -1 is given, then the currently shown sort indicator
+            will be removed.
+        @param ascending
+            If @true or @false show the sort indicator corresponding to
+            ascending or descending sort order respectively.
+
+        @since 3.1.6
+    */
+    void ShowSortIndicator(int col, bool ascending = true);
+
+    /**
+        Remove the sort indicator from the column being used as sort key.
+
+        @since 3.1.6
+    */
+    void RemoveSortIndicator();
+
+    /**
+        Returns the column that shows the sort indicator.
+
+        Can return @c -1 if there is no sort indicator currently shown.
+
+        @since 3.1.6
+    */
+    int GetSortIndicator() const;
+
+    /**
+        Returns the new value to use for sort indicator after clicking a
+        column.
+
+        This helper function can be useful in the EVT_LIST_COL_CLICK handler
+        when it updates the sort indicator after the user clicked on a column.
+
+        For example:
+        @code
+            void MyListCtrl::OnColClick(wxListEvent& event)
+            {
+                int col = event.GetColumn();
+                if ( col == -1 )
+                    return; // clicked outside any column.
+
+                const bool ascending = GetUpdatedAscendingSortIndicator(col);
+                SortItems(MyCompareFunction, ascending);
+                ShowSortIndicator(col, ascending);
+            }
+        @endcode
+
+        @since 3.1.6
+    */
+    bool GetUpdatedAscendingSortIndicator(int col) const;
+
+    /**
+        Returns @true if the sort indicator direction is ascending,
+        @false when the direction is descending.
+
+        @since 3.1.6
+    */
+    bool IsAscendingSortIndicator() const;
 
 protected:
 
@@ -1409,8 +1562,12 @@ protected:
 
     /**
         This function must be overridden in the derived class for a control with
-        @c wxLC_VIRTUAL style having an "image list" (see SetImageList(); if the
-        control doesn't have an image list, it is not necessary to override it).
+        @c wxLC_VIRTUAL style using images.
+
+        If the control doesn't use images, i.e. SetNormalImages() or
+        SetSmallImages() hadn't been called, it is not necessary to override
+        it.
+
         It should return the index of the items image in the controls image list
         or -1 for no image.
 
@@ -1940,14 +2097,14 @@ public:
     */
     void SetColumn(int col);
 
-    //@{
+    ///@{
     /**
         Sets client data for the item.
         Please note that client data is associated with the item and not with subitems.
     */
     void SetData(long data);
     void SetData(void* data);
-    //@}
+    ///@}
 
     /**
         Sets the font for the item.

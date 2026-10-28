@@ -306,7 +306,12 @@ bool wxApp::Initialize(int& argc, wxChar **argv)
         return false;
 
 #if wxUSE_INTL
-    wxFont::SetDefaultEncoding(wxLocale::GetSystemEncoding());
+    // Check if we recognize the system encoding. Note that we must not call
+    // SetDefaultEncoding() if we don't, as indicated by wxFONTENCODING_DEFAULT
+    // being returned, as SetDefaultEncoding() would assert in this case.
+    const wxFontEncoding defaultEncoding = wxLocale::GetSystemEncoding();
+    if ( defaultEncoding != wxFONTENCODING_DEFAULT )
+        wxFont::SetDefaultEncoding(defaultEncoding);
 #endif
 
     // these might be the startup dirs, set them to the 'usual' dir containing the app bundle
@@ -386,7 +391,7 @@ wxApp::wxApp()
 
     m_macCurrentEvent = NULL ;
     m_macCurrentEventHandlerCallRef = NULL ;
-    m_macPool = new wxMacAutoreleasePool();
+    m_macPool = sm_isEmbedded ? NULL : new wxMacAutoreleasePool();
 }
 
 wxApp::~wxApp()
@@ -828,13 +833,7 @@ void wxApp::MacCreateKeyEvent( wxKeyEvent& event, wxWindow* focus , long keymess
     {
         // control interferes with some built-in keys like pgdown, return etc. therefore we remove the controlKey modifier
         // and look at the character after
-#ifdef __LP64__
         // TODO new implementation using TextInputSources
-#else
-        UInt32 state = 0;
-        UInt32 keyInfo = KeyTranslate((Ptr)GetScriptManagerVariable(smKCHRCache), ( modifiers & (~(controlKey | shiftKey | optionKey))) | keycode, &state);
-        keychar = short(keyInfo & charCodeMask);
-#endif
     }
 
     long keyval = wxMacTranslateKey(keychar, keycode) ;

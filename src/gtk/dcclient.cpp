@@ -21,6 +21,7 @@
 #endif
 
 #include "wx/fontutil.h"
+#include "wx/scopedarray.h"
 
 #include "wx/gtk/private.h"
 #include "wx/gtk/private/object.h"
@@ -518,8 +519,7 @@ void wxWindowDCImpl::DoDrawLine( wxCoord x1, wxCoord y1, wxCoord x2, wxCoord y2 
         if (m_gdkwindow)
             gdk_draw_line( m_gdkwindow, m_penGC, XLOG2DEV(x1), YLOG2DEV(y1), XLOG2DEV(x2), YLOG2DEV(y2) );
 
-        CalcBoundingBox(x1, y1);
-        CalcBoundingBox(x2, y2);
+        CalcBoundingBox(x1, y1, x2, y2);
     }
 }
 
@@ -649,8 +649,7 @@ void wxWindowDCImpl::DoDrawArc( wxCoord x1, wxCoord y1, wxCoord x2, wxCoord y2,
         }
     }
 
-    CalcBoundingBox (x1, y1);
-    CalcBoundingBox (x2, y2);
+    CalcBoundingBox(x1, y1, x2, y2);
 }
 
 void wxWindowDCImpl::DoDrawEllipticArc( wxCoord x, wxCoord y, wxCoord width, wxCoord height, double sa, double ea )
@@ -697,8 +696,7 @@ void wxWindowDCImpl::DoDrawEllipticArc( wxCoord x, wxCoord y, wxCoord width, wxC
             gdk_draw_arc( m_gdkwindow, m_penGC, FALSE, xx, yy, ww, hh, start, end );
     }
 
-    CalcBoundingBox (x, y);
-    CalcBoundingBox (x + width, y + height);
+    CalcBoundingBox( wxPoint(x, y), wxSize(width, height) );
 }
 
 void wxWindowDCImpl::DoDrawPoint( wxCoord x, wxCoord y )
@@ -726,12 +724,12 @@ void wxWindowDCImpl::DoDrawLines( int n, const wxPoint points[], wxCoord xoffset
 
     // GdkPoint and wxPoint have the same memory layout, so we can cast one to the other
     const GdkPoint* gpts = reinterpret_cast<const GdkPoint*>(points);
-    GdkPoint* gpts_alloc = NULL;
+    wxScopedArray<GdkPoint> gpts_alloc;
 
     if (doScale)
     {
-        gpts_alloc = new GdkPoint[n];
-        gpts = gpts_alloc;
+        gpts_alloc.reset(new GdkPoint[n]);
+        gpts = gpts_alloc.get();
     }
 
     for (int i = 0; i < n; i++)
@@ -746,8 +744,6 @@ void wxWindowDCImpl::DoDrawLines( int n, const wxPoint points[], wxCoord xoffset
 
     if (m_gdkwindow)
         gdk_draw_lines(m_gdkwindow, m_penGC, const_cast<GdkPoint*>(gpts), n);
-
-    delete[] gpts_alloc;
 }
 
 void wxWindowDCImpl::DoDrawPolygon( int n, const wxPoint points[],
@@ -764,12 +760,12 @@ void wxWindowDCImpl::DoDrawPolygon( int n, const wxPoint points[],
 
     // GdkPoint and wxPoint have the same memory layout, so we can cast one to the other
     const GdkPoint* gdkpoints = reinterpret_cast<const GdkPoint*>(points);
-    GdkPoint* gdkpoints_alloc = NULL;
+    wxScopedArray<GdkPoint> gdkpoints_alloc;
 
     if (doScale)
     {
-        gdkpoints_alloc = new GdkPoint[n];
-        gdkpoints = gdkpoints_alloc;
+        gdkpoints_alloc.reset(new GdkPoint[n]);
+        gdkpoints = gdkpoints_alloc.get();
     }
 
     int i;
@@ -813,8 +809,6 @@ void wxWindowDCImpl::DoDrawPolygon( int n, const wxPoint points[],
 
         }
     }
-
-    delete[] gdkpoints_alloc;
 }
 
 void wxWindowDCImpl::DoDrawRectangle( wxCoord x, wxCoord y, wxCoord width, wxCoord height )
@@ -853,8 +847,7 @@ void wxWindowDCImpl::DoDrawRectangle( wxCoord x, wxCoord y, wxCoord width, wxCoo
         }
     }
 
-    CalcBoundingBox( x, y );
-    CalcBoundingBox( x + width, y + height );
+    CalcBoundingBox( wxPoint(x, y), wxSize(width, height) );
 }
 
 void wxWindowDCImpl::DoDrawRoundedRectangle( wxCoord x, wxCoord y, wxCoord width, wxCoord height, double radius )
@@ -932,8 +925,7 @@ void wxWindowDCImpl::DoDrawRoundedRectangle( wxCoord x, wxCoord y, wxCoord width
     }
 
     // this ignores the radius
-    CalcBoundingBox( x, y );
-    CalcBoundingBox( x + width, y + height );
+    CalcBoundingBox( wxPoint(x, y), wxSize(width, height) );
 }
 
 void wxWindowDCImpl::DoDrawEllipse( wxCoord x, wxCoord y, wxCoord width, wxCoord height )
@@ -975,8 +967,7 @@ void wxWindowDCImpl::DoDrawEllipse( wxCoord x, wxCoord y, wxCoord width, wxCoord
             gdk_draw_arc( m_gdkwindow, m_penGC, false, xx, yy, ww, hh, 0, 360*64 );
     }
 
-    CalcBoundingBox( x, y );
-    CalcBoundingBox( x + width, y + height );
+    CalcBoundingBox( wxPoint(x, y), wxSize(width, height) );
 }
 
 void wxWindowDCImpl::DoDrawIcon( const wxIcon &icon, wxCoord x, wxCoord y )
@@ -1016,11 +1007,11 @@ ScaleMask(GdkPixmap* mask, int x, int y, int w, int h, int dst_w, int dst_h, dou
     // convert black and white pixbuf back to a mono pixmap
     const unsigned out_rowstride = (dst_w + 7) / 8;
     const size_t data_size = out_rowstride * size_t(dst_h);
-    char* data = new char[data_size];
-    char* out = data;
+    wxScopedArray<char> data(data_size);
+    char* out = data.get();
     const guchar* row = gdk_pixbuf_get_pixels(pixbuf);
     const int rowstride = gdk_pixbuf_get_rowstride(pixbuf);
-    memset(data, 0, data_size);
+    memset(data.get(), 0, data_size);
     for (int j = 0; j < dst_h; j++, row += rowstride, out += out_rowstride)
     {
         const guchar* in = row;
@@ -1029,9 +1020,7 @@ ScaleMask(GdkPixmap* mask, int x, int y, int w, int h, int dst_w, int dst_h, dou
                 out[i >> 3] |= 1 << (i & 7);
     }
     g_object_unref(pixbuf);
-    GdkPixmap* pixmap = gdk_bitmap_create_from_data(mask, data, dst_w, dst_h);
-    delete[] data;
-    return pixmap;
+    return gdk_bitmap_create_from_data(mask, data.get(), dst_w, dst_h);
 }
 
 // Make a new mask from part of a mask and a clip region.
@@ -1087,8 +1076,7 @@ void wxWindowDCImpl::DoDrawBitmap( const wxBitmap &bitmap,
     // notice that as the bitmap is not drawn upside down (or right to left)
     // even if the corresponding axis direction is inversed, we need to take it
     // into account when calculating its bounding box
-    CalcBoundingBox(x, y);
-    CalcBoundingBox(x + m_signX*w, y + m_signY*h);
+    CalcBoundingBox(wxPoint(x, y), wxSize(m_signX*w, m_signY*h));
 
     // device coords
     int xx = LogicalToDeviceX(x);
@@ -1237,8 +1225,7 @@ bool wxWindowDCImpl::DoBlit( wxCoord xdest, wxCoord ydest,
             return false;
     }
 
-    CalcBoundingBox(xdest, ydest);
-    CalcBoundingBox(xdest + width, ydest + height);
+    CalcBoundingBox(wxPoint(xdest, ydest), wxSize(width, height) );
 
     // source device coords
     int src_x = source->LogicalToDeviceX(xsrc);
@@ -1424,8 +1411,7 @@ void wxWindowDCImpl::DoDrawRotatedText(const wxString& text, int xLogical, int y
 
     if (wxIsNullDouble(angle))
     {
-        CalcBoundingBox(xLogical, yLogical);
-        CalcBoundingBox(xLogical + w, yLogical + h);
+        CalcBoundingBox(wxPoint(xLogical, yLogical), wxSize(w, h));
     }
     else
     {
@@ -1448,8 +1434,8 @@ void wxWindowDCImpl::DoDrawRotatedText(const wxString& text, int xLogical, int y
                 minY = (wxCoord)(dmin(dmin(0, y2), dmin(y3, y4)) - 0.5);
         x += minX;
         y += minY;
-        CalcBoundingBox(DeviceToLogicalX(x), DeviceToLogicalY(y));
-        CalcBoundingBox(DeviceToLogicalX(x + maxX - minX), DeviceToLogicalY(y + maxY - minY));
+        CalcBoundingBox(DeviceToLogicalX(x), DeviceToLogicalY(y),
+                        DeviceToLogicalX(x + maxX - minX), DeviceToLogicalY(y + maxY - minY));
     }
 
     gdk_draw_layout_with_colors(m_gdkwindow, m_textGC, x, y, m_layout, NULL, bg_col);
@@ -1595,9 +1581,9 @@ void wxWindowDCImpl::SetPen( const wxPen &pen )
     }
 
     static const wxDash dotted[] = {1, 1};
-    static const wxDash short_dashed[] = {2, 2};
-    static const wxDash wxCoord_dashed[] = {2, 4};
-    static const wxDash dotted_dashed[] = {3, 3, 1, 3};
+    static const wxDash short_dashed[] = { 3, 1 };
+    static const wxDash long_dashed[] = { 6, 1 };
+    static const wxDash dotted_dashed[] = { 3, 1, 1, 1 };
 
     // We express dash pattern in pen width unit, so we are
     // independent of zoom factor and so on...
@@ -1617,7 +1603,7 @@ void wxWindowDCImpl::SetPen( const wxPen &pen )
             break;
         case wxPENSTYLE_LONG_DASH:
             req_nb_dash = 2;
-            req_dash = wxCoord_dashed;
+            req_dash = long_dashed;
             break;
         case wxPENSTYLE_SHORT_DASH:
             req_nb_dash = 2;
@@ -1641,13 +1627,21 @@ void wxWindowDCImpl::SetPen( const wxPen &pen )
 
     if (req_dash && req_nb_dash)
     {
-        wxDash* real_req_dash = new wxDash[req_nb_dash];
+        wxScopedArray<wxDash> real_req_dash(req_nb_dash);
         if (real_req_dash)
         {
+            const bool isCapButt = m_pen.GetCap() == wxCAP_BUTT;
             for (int i = 0; i < req_nb_dash; i++)
-                real_req_dash[i] = req_dash[i] * width;
-            gdk_gc_set_dashes( m_penGC, 0, real_req_dash, req_nb_dash );
-            delete[] real_req_dash;
+            {
+                wxDash dash = req_dash[i];
+                if ((i & 1) && !isCapButt)
+                {
+                    // the caps intrude into "off" length by 0.5 at each end
+                    dash++;
+                }
+                real_req_dash[i] = dash * width;
+            }
+            gdk_gc_set_dashes( m_penGC, 0, real_req_dash.get(), req_nb_dash );
         }
         else
         {
@@ -1663,7 +1657,7 @@ void wxWindowDCImpl::SetPen( const wxPen &pen )
         case wxCAP_BUTT:       { capStyle = GDK_CAP_BUTT;       break; }
         case wxCAP_ROUND:
         default:
-            if (width <= 1)
+            if (width <= 1 && lineStyle == GDK_LINE_SOLID)
             {
                 width = 0;
                 capStyle = GDK_CAP_NOT_LAST;

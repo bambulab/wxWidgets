@@ -75,6 +75,21 @@ wxDEFINE_EVENT( wxEVT_AUI_FIND_MANAGER, wxAuiManagerEvent );
 wxIMPLEMENT_DYNAMIC_CLASS(wxAuiManagerEvent, wxEvent);
 wxIMPLEMENT_CLASS(wxAuiManager, wxEvtHandler);
 
+// We can't add a member variable to wxAuiManager in 3.2 branch, so emulate it
+// by encoding the corresponding boolean value via the presence of "this"
+// pointer in the given hash set.
+#include "wx/hashset.h"
+
+namespace
+{
+
+// Define a set of wxAuiManager object pointers.
+WX_DECLARE_HASH_SET(wxAuiManager*, wxPointerHash, wxPointerEqual, wxAuiManagerSet);
+
+// And use it to remember for which objects we delayed updating them.
+wxAuiManagerSet gs_updateOnRestore;
+
+} // anonymous namespace
 
 
 const int auiToolBarLayer = 10;
@@ -614,7 +629,6 @@ wxAuiManager::wxAuiManager(wxWindow* managed_wnd, unsigned int flags)
     m_art = new wxAuiDefaultDockArt;
     m_hintWnd = NULL;
     m_flags = flags;
-    m_skipping = false;
     m_hasMaximized = false;
     m_frame = NULL;
     m_dockConstraintX = 0.3;
@@ -630,6 +644,8 @@ wxAuiManager::wxAuiManager(wxWindow* managed_wnd, unsigned int flags)
 
 wxAuiManager::~wxAuiManager()
 {
+    gs_updateOnRestore.erase(this);
+
     UnInit();
 
     // NOTE: It's possible that the windows have already been destroyed by the
@@ -2496,6 +2512,17 @@ void wxAuiManager::GetDockSizeConstraint(double* width_pct, double* height_pct) 
 
 void wxAuiManager::Update()
 {
+    wxTopLevelWindow * const
+        tlw = wxDynamicCast(wxGetTopLevelParent(m_frame), wxTopLevelWindow);
+    if ( tlw && tlw->IsIconized() )
+    {
+        // We can't compute the layout correctly when the frame is minimized
+        // because at least under MSW its client size is (0,0) in this case
+        // but, luckily, we don't need to do it right now anyhow.
+        gs_updateOnRestore.insert(this);
+        return;
+    }
+
     m_hoverButton = NULL;
     m_actionPart = NULL;
 
@@ -3010,28 +3037,16 @@ bool wxAuiManager::DoDrop(wxAuiDockInfoArray& docks,
         if (!part->dock->fixed || part->dock->dock_direction == wxAUI_DOCK_CENTER ||
             pt.x >= cli_size.x || pt.x <= 0 || pt.y >= cli_size.y || pt.y <= 0)
         {
-            if (m_lastRect.IsEmpty() || m_lastRect.Contains(pt.x, pt.y ))
+            if ((m_flags & wxAUI_MGR_ALLOW_FLOATING) && drop.IsFloatable())
             {
-                m_skipping = true;
+                drop.Float();
             }
             else
             {
-                if ((m_flags & wxAUI_MGR_ALLOW_FLOATING) && drop.IsFloatable())
-                {
-                    drop.Float();
-                }
-
-                m_skipping = false;
-
-                return ProcessDockResult(target, drop);
+                drop.Position(pt.x - GetDockPixelOffset(drop) - offset.x);
             }
-
-            drop.Position(pt.x - GetDockPixelOffset(drop) - offset.x);
-
             return ProcessDockResult(target, drop);
         }
-
-        m_skipping = false;
 
         m_lastRect = part->dock->rect;
         m_lastRect.Inflate( m_frame->FromDIP(wxSize(15, 15)) );
@@ -3915,7 +3930,8 @@ void wxAuiManager::Render(wxDC* dc)
 
 void wxAuiManager::Repaint(wxDC* dc)
 {
-#ifdef __WXMAC__
+#if defined(__WXMAC__) || defined(__WXGTK3__)
+    // We can't use wxClientDC in these ports.
     if ( dc == NULL )
     {
         m_frame->Refresh() ;
@@ -3966,10 +3982,9 @@ void wxAuiManager::OnDestroy(wxWindowDestroyEvent& event)
         if ( frame )
             frame->ProcessWindowEventLocally(event);
     }
-    else
-    {
-        event.Skip();
-    }
+
+    // Make sure this event get's propagated to other handlers.
+    event.Skip();
 }
 
 void wxAuiManager::OnPaint(wxPaintEvent& WXUNUSED(event))
@@ -3995,8 +4010,19 @@ void wxAuiManager::OnSize(wxSizeEvent& event)
 {
     if (m_frame)
     {
-        DoFrameLayout();
-        Repaint();
+        if ( gs_updateOnRestore.count(this) )
+        {
+            // If we had postponed updating, do it now: we only receive size
+            // events once the window is restored.
+            gs_updateOnRestore.erase(this);
+
+            Update();
+        }
+        else // Otherwise just re-layout, without redoing the full update.
+        {
+            DoFrameLayout();
+            Repaint();
+        }
 
 #if wxUSE_MDI
         if (wxDynamicCast(m_frame, wxMDIParentFrame))
@@ -4864,7 +4890,7 @@ void wxAuiManager::OnPaneButton(wxAuiManagerEvent& evt)
 
             if (e.GetVeto())
             {
-                // If it can't be restored, it can't be floated neither.
+                // If it can't be restored, it can't be floated either.
                 return;
             }
 

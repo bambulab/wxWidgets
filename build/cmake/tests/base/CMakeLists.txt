@@ -107,6 +107,8 @@ if(wxUSE_XML)
 endif()
 
 set(TEST_DATA
+    intl/en_GB/internat.mo
+    intl/en_GB/internat.po
     intl/fr/internat.mo
     intl/fr/internat.po
     intl/ja/internat.mo
@@ -114,7 +116,7 @@ set(TEST_DATA
     horse.bmp
     horse.png
     horse.xpm
-    testdata.fc
+    testdata.conf
     )
 
 wx_add_test(test_base CONSOLE ${TEST_SRC}

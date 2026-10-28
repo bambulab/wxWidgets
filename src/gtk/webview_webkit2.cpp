@@ -11,6 +11,13 @@
 
 #if wxUSE_WEBVIEW && wxUSE_WEBVIEW_WEBKIT2
 
+// In Ubuntu 18.04 compiling glib.h with gcc 4.8 results in the warnings inside
+// it, and disabling them temporarily using wxGCC_WARNING_SUPPRESS/RESTORE
+// doesn't work (i.e. they're still given), so disable them globally here.
+#if wxCHECK_GCC_VERSION(4, 8) && !wxCHECK_GCC_VERSION(4, 9)
+    #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+
 #include "wx/dir.h"
 #include "wx/dynlib.h"
 #include "wx/filename.h"
@@ -410,6 +417,7 @@ wxgtk_webview_webkit_uri_scheme_request_cb(WebKitURISchemeRequest *request,
                                                                        g_free);
             wxString mime = file->GetMimeType();
             webkit_uri_scheme_request_finish(request, stream, length, mime.utf8_str());
+            g_object_unref(stream);
         }
         else
         {
@@ -530,7 +538,7 @@ wxgtk_initialize_web_extensions(WebKitWebContext *context,
 
             for ( size_t n = 0; n < WXSIZEOF(directories); ++n )
             {
-                if ( !TrySetWebExtensionsDirectory(context, directories[n]) )
+                if ( TrySetWebExtensionsDirectory(context, directories[n]) )
                     break;
             }
         }
@@ -830,6 +838,24 @@ void wxWebViewWebKit::EnableHistory(bool)
     // In WebKit2GTK+, history can't be disabled so do nothing here.
 }
 
+/* static */
+wxSharedPtr<wxWebViewHistoryItem>
+wxWebViewWebKit::CreateHistoryItemFromWKItem(WebKitBackForwardListItem* gtkitem)
+{
+    wxWebViewHistoryItem* wxitem = new wxWebViewHistoryItem(
+                          wxString::FromUTF8(webkit_back_forward_list_item_get_uri(gtkitem)),
+                          // Since WebKit 2.43.4 titles are not stored any more
+                          // and the function is deprecated, so don't use it.
+#if !WEBKIT_CHECK_VERSION(2, 43, 4)
+                          wxString::FromUTF8(webkit_back_forward_list_item_get_title(gtkitem))
+#else
+                          wxString()
+#endif
+                          );
+    wxitem->m_histItem = gtkitem;
+    return wxSharedPtr<wxWebViewHistoryItem>(wxitem);
+}
+
 wxVector<wxSharedPtr<wxWebViewHistoryItem> > wxWebViewWebKit::GetBackwardHistory()
 {
     wxVector<wxSharedPtr<wxWebViewHistoryItem> > backhist;
@@ -840,12 +866,7 @@ wxVector<wxSharedPtr<wxWebViewHistoryItem> > wxWebViewWebKit::GetBackwardHistory
     for(int i = g_list_length(list) - 1; i >= 0 ; i--)
     {
         WebKitBackForwardListItem* gtkitem = (WebKitBackForwardListItem*)g_list_nth_data(list, i);
-        wxWebViewHistoryItem* wxitem = new wxWebViewHistoryItem(
-                              webkit_back_forward_list_item_get_uri(gtkitem),
-                              webkit_back_forward_list_item_get_title(gtkitem));
-        wxitem->m_histItem = gtkitem;
-        wxSharedPtr<wxWebViewHistoryItem> item(wxitem);
-        backhist.push_back(item);
+        backhist.push_back(CreateHistoryItemFromWKItem(gtkitem));
     }
     return backhist;
 }
@@ -859,12 +880,7 @@ wxVector<wxSharedPtr<wxWebViewHistoryItem> > wxWebViewWebKit::GetForwardHistory(
     for(guint i = 0; i < g_list_length(list); i++)
     {
         WebKitBackForwardListItem* gtkitem = (WebKitBackForwardListItem*)g_list_nth_data(list, i);
-        wxWebViewHistoryItem* wxitem = new wxWebViewHistoryItem(
-                              webkit_back_forward_list_item_get_uri(gtkitem),
-                              webkit_back_forward_list_item_get_title(gtkitem));
-        wxitem->m_histItem = gtkitem;
-        wxSharedPtr<wxWebViewHistoryItem> item(wxitem);
-        forwardhist.push_back(item);
+        forwardhist.push_back(CreateHistoryItemFromWKItem(gtkitem));
     }
     return forwardhist;
 }
@@ -1235,6 +1251,13 @@ wxString wxWebViewWebKit::GetPageText() const
     return wxString();
 }
 
+class wxWebKitRunScriptParams
+{
+public:
+    const wxWebViewWebKit* webKitCtrl;
+    void* clientData;
+};
+
 extern "C"
 {
 
@@ -1242,80 +1265,55 @@ static void wxgtk_run_javascript_cb(GObject *,
                                     GAsyncResult *res,
                                     void *user_data)
 {
-    g_object_ref(res);
-
-    GAsyncResult** res_out = static_cast<GAsyncResult**>(user_data);
-    *res_out = res;
+    wxWebKitRunScriptParams* params = static_cast<wxWebKitRunScriptParams*>(user_data);
+    params->webKitCtrl->ProcessJavaScriptResult(res, params);
 }
 
 } // extern "C"
 
-// Run the given script synchronously and return its result in output.
-bool wxWebViewWebKit::RunScriptSync(const wxString& javascript, wxString* output) const
+void wxWebViewWebKit::ProcessJavaScriptResult(GAsyncResult *res, wxWebKitRunScriptParams* params) const
 {
-    GAsyncResult *result = NULL;
-    webkit_web_view_run_javascript(m_web_view,
-                                   javascript.utf8_str(),
-                                   NULL,
-                                   wxgtk_run_javascript_cb,
-                                   &result);
-
-    GMainContext *main_context = g_main_context_get_thread_default();
-
-    while ( !result )
-        g_main_context_iteration(main_context, TRUE);
-
     wxGtkError error;
     wxWebKitJavascriptResult js_result
                              (
                                 webkit_web_view_run_javascript_finish
                                 (
                                     m_web_view,
-                                    result,
+                                    res,
                                     error.Out()
                                 )
                              );
 
-    // Match g_object_ref() in wxgtk_run_javascript_cb()
-    g_object_unref(result);
-
-    if ( !js_result )
+    if ( js_result )
     {
-        if ( output )
-            *output = error.GetMessage();
-        return false;
+        wxString scriptResult;
+        if ( wxGetStringFromJSResult(js_result, &scriptResult) )
+        {
+            wxString scriptOutput;
+            bool success = wxJSScriptWrapper::ExtractOutput(scriptResult, &scriptOutput);
+            SendScriptResult(params->clientData, success, scriptOutput);
+        }
     }
+    else
+        SendScriptResult(params->clientData, false, error.GetMessage());
 
-    return wxGetStringFromJSResult(js_result, output);
+    delete params;
 }
 
-bool wxWebViewWebKit::RunScript(const wxString& javascript, wxString* output) const
+void wxWebViewWebKit::RunScriptAsync(const wxString& javascript, void* clientData) const
 {
-    wxJSScriptWrapper wrapJS(javascript, &m_runScriptCount);
+    wxJSScriptWrapper wrapJS(javascript, wxJSScriptWrapper::JS_OUTPUT_STRING);
 
-    // This string is also used as an error indicator: it's cleared if there is
-    // no error or used in the warning message below if there is one.
-    wxString result;
-    if ( RunScriptSync(wrapJS.GetWrappedCode(), &result)
-            && result == wxS("true") )
-    {
-        if ( RunScriptSync(wrapJS.GetOutputCode(), &result) )
-        {
-            if ( output )
-                *output = result;
-            result.clear();
-        }
+    // Collect parameters for access from the callback
+    wxWebKitRunScriptParams* params = new wxWebKitRunScriptParams;
+    params->webKitCtrl = this;
+    params->clientData = clientData;
 
-        RunScriptSync(wrapJS.GetCleanUpCode());
-    }
-
-    if ( !result.empty() )
-    {
-        wxLogWarning(_("Error running JavaScript: %s"), result);
-        return false;
-    }
-
-    return true;
+    webkit_web_view_run_javascript(m_web_view,
+                                   wrapJS.GetWrappedCode().utf8_str(),
+                                   NULL,
+                                   wxgtk_run_javascript_cb,
+                                   params);
 }
 
 bool wxWebViewWebKit::AddScriptMessageHandler(const wxString& name)

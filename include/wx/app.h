@@ -136,6 +136,12 @@ public:
     // Called from wxExit() function, should terminate the application a.s.a.p.
     virtual void Exit();
 
+    // Allows to set a custom process exit code if OnInit() returns false.
+#if wxABI_VERSION >= 30207
+    void SetErrorExitCode(int code);
+    int GetErrorExitCode() const;
+#endif // wxABI_VERSION >= 3.2.7
+
 
     // application info: name, description, vendor
     // -------------------------------------------
@@ -153,7 +159,7 @@ public:
         // used for paths, config, and other places the user doesn't see
         //
         // by default the display name is the same as app name or a capitalized
-        // version of the program if app name was not set neither but it's
+        // version of the program if app name was not set either but it's
         // usually better to set it explicitly to something nicer
     wxString GetAppDisplayName() const;
 
@@ -462,6 +468,9 @@ public:
     static wxAppConsole *GetInstance() { return ms_appInstance; }
     static void SetInstance(wxAppConsole *app) { ms_appInstance = app; }
 
+    // returns true for GUI wxApp subclasses
+    virtual bool IsGUI() const { return false; }
+
 
     // command line arguments (public for backwards compatibility)
     int argc;
@@ -533,6 +542,10 @@ protected:
     bool m_bDoPendingEventProcessing;
 
     friend class WXDLLIMPEXP_FWD_BASE wxEvtHandler;
+
+    // Stub virtual functions for forward binary compatibility. DO NOT USE.
+    virtual void* WXReservedApp1(void*);
+    virtual void* WXReservedApp2(void*);
 
     // the application object is a singleton anyhow, there is no sense in
     // copying it
@@ -684,6 +697,19 @@ public:
     // deactivated
     virtual void SetActive(bool isActive, wxWindow *lastFocus);
 
+    virtual bool IsGUI() const wxOVERRIDE { return true; }
+
+    // returns non-null pointer only if we have a GUI application object: this
+    // is only useful in the rare cases when the same code can be used in both
+    // console and GUI applications, but needs to use GUI-specific functions if
+    // the GUI is available
+    static wxAppBase *GetGUIInstance()
+    {
+        return ms_appInstance && ms_appInstance->IsGUI()
+                ? static_cast<wxAppBase*>(ms_appInstance)
+                : NULL;
+    }
+
 protected:
     // override base class method to use GUI traits
     virtual wxAppTraits *CreateTraits() wxOVERRIDE;
@@ -761,7 +787,7 @@ protected:
 // return the object of the correct type (i.e. MyApp and not wxApp)
 //
 // the cast is safe as in GUI build we only use wxApp, not wxAppConsole, and in
-// console mode it does nothing at all
+// console mode it does nothing at all (but see also wxApp::GetGUIInstance())
 #define wxTheApp static_cast<wxApp*>(wxApp::GetInstance())
 
 // ----------------------------------------------------------------------------
@@ -846,7 +872,7 @@ public:
     #define wxIMPLEMENT_WXWIN_MAIN          wxIMPLEMENT_WXWIN_MAIN_CONSOLE
 #endif // defined(wxIMPLEMENT_WXWIN_MAIN)
 
-#ifdef __WXUNIVERSAL__
+#if defined(__WXUNIVERSAL__) && wxUSE_GUI
     #include "wx/univ/theme.h"
 
     #ifdef wxUNIV_DEFAULT_THEME

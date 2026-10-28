@@ -15,13 +15,8 @@
 
 #include "wx/glcanvas.h"
 
-#include "wx/gtk/private/wrapgtk.h"
-#ifdef GDK_WINDOWING_WAYLAND
-#include <gdk/gdkwayland.h>
-#endif
-#ifdef GDK_WINDOWING_X11
-#include <gdk/gdkx.h>
-#endif
+#include "wx/gtk/private/wrapgdk.h"
+#include "wx/gtk/private/backend.h"
 
 #ifdef __WXGTK3__
 extern "C" {
@@ -169,11 +164,10 @@ static bool IsAvailable()
 {
 #if defined(__WXGTK3__) && (defined(GDK_WINDOWING_WAYLAND) || defined(GDK_WINDOWING_X11))
     GdkDisplay* display = gdk_display_get_default();
-    const char* displayTypeName = g_type_name(G_TYPE_FROM_INSTANCE(display));
 #endif
 
 #ifdef GDK_WINDOWING_WAYLAND
-    if (strcmp("GdkWaylandDisplay", displayTypeName) == 0)
+    if (wxGTKImpl::IsWayland(display))
     {
 #if wxUSE_GLCANVAS_EGL
         return true;
@@ -186,7 +180,7 @@ static bool IsAvailable()
 
 #ifdef GDK_WINDOWING_X11
 #ifdef __WXGTK3__
-    if (strcmp("GdkX11Display", displayTypeName) == 0)
+    if (wxGTKImpl::IsX11(display))
 #endif
     {
         return true;

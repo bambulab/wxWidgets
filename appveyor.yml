@@ -3,6 +3,7 @@ version: '{build}'
 branches:
   only:
   - master
+  - 3.2
   - WX_3_0_BRANCH
 
 skip_commits:
@@ -27,13 +28,15 @@ skip_commits:
     - include/wx/x11/
     - src/x11/
     - '**/*.md'
+    - .circleci/
+    - .github/ISSUE_TEMPLATE/
     - .github/workflows/
-    - .travis.yml
-    - build/tools/travis-ci.sh
     - build/tools/before_install.sh
     - build/tools/httpbin.sh
 
 environment:
+  GOVERSION: "1.22.1"
+  GOPATH: c:\gopath
   matrix:
   - TOOLSET: msbuild
     CONFIGURATION: DLL Release
@@ -52,7 +55,6 @@ environment:
   - TOOLSET: mingw
   - TOOLSET: msys2
     MSYSTEM: MINGW32
-  - TOOLSET: cygwin
   - TOOLSET: cmake
     GENERATOR: 'Visual Studio 12'
     SHARED: ON
@@ -62,7 +64,10 @@ environment:
     SHARED: ON
     CONFIGURATION: Release
 
-clone_depth: 50
+cache:
+  - '%USERPROFILE%\go%GOVERSION%.windows-amd64.msi'
+
+clone_depth: 1
 
 install: git submodule update --init
 
@@ -89,15 +94,23 @@ before_build:
 build_script: c:\projects\wxwidgets\build\tools\appveyor.bat
 
 before_test:
+- cmd: |
+    echo Getting and launching httpbin.
+    rmdir %GOROOT% /s /q
+    mkdir %GOROOT%
+    cd %USERPROFILE%
+    set go_exe=go%GOVERSION%.windows-amd64.msi
+    if not exist "%go_exe%" appveyor DownloadFile https://go.dev/dl/%go_exe%
+    msiexec /i %go_exe% INSTALLDIR="%GOROOT%" /q
+    go version
+    go install github.com/mccutchen/go-httpbin/v2/cmd/go-httpbin@v2.20.0
+    set PATH=%PATH%;%GOPATH%\bin
 - ps: |
-    Write-Output "Getting and launching httpbin."
-    $env:PATH = "C:\Python35;C:\Python35\Scripts;" + $env:PATH
-    pip.exe --disable-pip-version-check install httpbin
-    Start-Job -Name wx_httpbin { python.exe -m httpbin.core 2>&1 > c:\projects\wxwidgets\httpbin.log }
+    Start-Job -Name wx_httpbin { go-httpbin -host 127.0.0.1 -port 8081 2>&1 > c:\projects\wxwidgets\httpbin.log }
     Start-Sleep -Seconds 5
-    curl.exe -s http://127.0.0.1:5000/ip > $null
+    curl.exe --silent --show-error http://127.0.0.1:8081/ip > $null
     if ($lastExitCode -eq "0") {
-        $env:WX_TEST_WEBREQUEST_URL="http://127.0.0.1:5000"
+        $env:WX_TEST_WEBREQUEST_URL="http://127.0.0.1:8081"
     }
     else {
         Write-Error "Disabling wxWebRequest tests as launching httpbin failed."

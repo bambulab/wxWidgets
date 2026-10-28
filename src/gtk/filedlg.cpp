@@ -20,6 +20,7 @@
 #endif
 
 #include "wx/gtk/private.h"
+#include "wx/gtk/private/error.h"
 #include "wx/gtk/private/mnemonics.h"
 
 #ifdef __UNIX__
@@ -30,6 +31,8 @@
 #include "wx/tokenzr.h" // wxStringTokenizer
 #include "wx/filefn.h" // ::wxGetCwd
 #include "wx/modalhook.h"
+
+#include "wx/private/elfversion.h"
 
 //-----------------------------------------------------------------------------
 // "clicked" for OK-button
@@ -370,6 +373,8 @@ void wxFileDialog::OnFakeOk(wxCommandEvent& WXUNUSED(event))
         str(gtk_file_chooser_get_current_folder(GTK_FILE_CHOOSER(m_widget)));
     m_dir = wxString::FromUTF8(str);
 
+    TransferDataFromExtraControl();
+
     EndDialog(wxID_OK);
 }
 
@@ -429,9 +434,7 @@ void wxFileDialog::SetPath(const wxString& path)
     // we need an absolute path for GTK native chooser so ensure that we have
     // it: use the initial directory if it was set or just CWD otherwise (this
     // is the default behaviour if m_dir is empty)
-    wxFileName fn(path);
-    fn.MakeAbsolute(m_dir);
-    m_fc.SetPath(fn.GetFullPath());
+    m_fc.SetPath(wxFileName(path).GetAbsolutePath(m_dir));
 }
 
 void wxFileDialog::SetDirectory(const wxString& dir)
@@ -497,6 +500,24 @@ void wxFileDialog::GTKSelectionChanged(const wxString& filename)
     m_currentlySelectedFilename = filename;
 
     UpdateExtraControlUI();
+}
+
+wxELF_VERSION_COMPAT("_ZN12wxFileDialog11AddShortcutERK8wxStringi", "3.2.1")
+bool wxFileDialog::AddShortcut(const wxString& directory, int WXUNUSED(flags))
+{
+    wxGtkError error;
+
+    if ( !gtk_file_chooser_add_shortcut_folder(GTK_FILE_CHOOSER(m_widget),
+                                               directory.utf8_str(),
+                                               error.Out()) )
+    {
+        wxLogDebug("Failed to add shortcut \"%s\": %s",
+                   directory, error.GetMessage());
+
+        return false;
+    }
+
+    return true;
 }
 
 #endif // wxUSE_FILEDLG

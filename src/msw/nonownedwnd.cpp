@@ -23,6 +23,7 @@
     #include "wx/dcclient.h"
     #include "wx/frame.h"       // Only for wxFRAME_SHAPED.
     #include "wx/region.h"
+    #include "wx/sizer.h"
     #include "wx/msw/private.h"
 #endif // WX_PRECOMP
 
@@ -213,14 +214,6 @@ static bool IsPerMonitorDPIAware(HWND hwnd)
 
 }
 
-void wxNonOwnedWindow::InheritAttributes()
-{
-    m_activeDPI = GetDPI();
-    m_perMonitorDPIaware = IsPerMonitorDPIAware(GetHwnd());
-
-    wxNonOwnedWindowBase::InheritAttributes();
-}
-
 bool wxNonOwnedWindow::IsThisEnabled() const
 {
     // Under MSW we use the actual window state rather than the value of
@@ -243,6 +236,16 @@ WXLRESULT wxNonOwnedWindow::MSWWindowProc(WXUINT message, WXWPARAM wParam, WXLPA
 
     switch ( message )
     {
+        case WM_NCCALCSIZE:
+            // Use this message ID to determine the DPI information on
+            // window creation, since WM_NCCREATE is not generated for dialogs.
+            if ( m_activeDPI == wxDefaultSize )
+            {
+                m_perMonitorDPIaware = IsPerMonitorDPIAware(GetHwnd());
+                m_activeDPI = GetDPI();
+            }
+            break;
+
         case WM_DPICHANGED:
             {
                 const RECT* const prcNewWindow =
@@ -268,13 +271,51 @@ bool wxNonOwnedWindow::HandleDPIChange(const wxSize& newDPI, const wxRect& newRe
         return false;
     }
 
-    if ( newDPI != m_activeDPI )
-    {
-        MSWUpdateOnDPIChange(m_activeDPI, newDPI);
-        m_activeDPI = newDPI;
-    }
+    // Update the window decoration size to the new DPI: this seems to be the
+    // call with the least amount of side effects that is sufficient to do it
+    // and we need to do this in order for the size calculations, either in the
+    // user-defined wxEVT_DPI_CHANGED handler or in our own GetBestSize() call
+    // below, to work correctly.
+    ::SetWindowPos(GetHwnd(),
+                   0, 0, 0, 0, 0,
+                   SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOREDRAW |
+                   SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOSENDCHANGING |
+                   SWP_FRAMECHANGED);
 
-    SetSize(newRect);
+    const bool processed = MSWUpdateOnDPIChange(m_activeDPI, newDPI);
+    m_activeDPI = newDPI;
+
+    // We consider that if the event was processed, the application resized the
+    // window on its own already, but otherwise do it ourselves.
+    if ( !processed )
+    {
+        // The best size doesn't scale exactly with the DPI, so while the new
+        // size is usually a decent guess, it's typically not exactly correct.
+        // We can't always do much better, but at least ensure that the window
+        // is still big enough to show its contents if it uses a sizer.
+        //
+        // Note that if it doesn't use a sizer, we can't do anything here as
+        // using the best size wouldn't be the right thing to do: some controls
+        // (e.g. multiline wxTextCtrl) can have best size much bigger than
+        // their current, or minimal, size and we don't want to expand them
+        // significantly just because the DPI has changed, see #23091.
+        wxRect actualNewRect = newRect;
+        if ( wxSizer* sizer = GetSizer() )
+        {
+            const wxSize minSize = ClientToWindowSize(sizer->GetMinSize());
+            wxSize diff = minSize - newRect.GetSize();
+            diff.IncTo(wxSize(0, 0));
+
+            // Use wxRect::Inflate() to ensure that the center of the bigger
+            // rectangle is at the same position as the center of the proposed
+            // one, to prevent moving the window back to the old display from
+            // which it might have been just moved to this one, as doing this
+            // would result in an infinite stream of WM_DPICHANGED messages.
+            actualNewRect.Inflate(diff);
+        }
+
+        SetSize(actualNewRect);
+    }
 
     Refresh();
 

@@ -4,6 +4,7 @@
 // Author:      Steven Lamerton
 // Created:     2010-07-10
 // Copyright:   (c) 2010 Steven Lamerton
+//              (c) 2026 wxWidgets development team
 ///////////////////////////////////////////////////////////////////////////////
 
 #include "testprec.h"
@@ -23,9 +24,12 @@
 #include "wx/uiaction.h"
 #include "wx/caret.h"
 #include "wx/cshelp.h"
+#include "wx/dcclient.h"
 #include "wx/scopedptr.h"
 #include "wx/stopwatch.h"
+#include "wx/timer.h"
 #include "wx/tooltip.h"
+#include "wx/wupdlock.h"
 
 class WindowTestCase
 {
@@ -53,23 +57,113 @@ protected:
     wxDECLARE_NO_COPY_CLASS(WindowTestCase);
 };
 
-TEST_CASE_METHOD(WindowTestCase, "Window::ShowHideEvent", "[window]")
+#if wxUSE_HELP
+class ContextHelpCaptureLostTester : public wxWindow
 {
-#if defined(__WXMSW__)
-    EventCounter show(m_window, wxEVT_SHOW);
+public:
+    ContextHelpCaptureLostTester(wxWindow* parent)
+        : wxWindow(parent, wxID_ANY)
+    {
+    }
 
-    CHECK(m_window->IsShown());
+    void SimulateCaptureLost()
+    {
+        DoReleaseMouse();
+        NotifyCaptureLost();
+    }
+};
 
-    m_window->Show(false);
+class ContextHelpCaptureLostState : public wxEvtHandler
+{
+public:
+    explicit ContextHelpCaptureLostState(ContextHelpCaptureLostTester* win)
+        : m_win(win),
+          m_captureLostTimer(this),
+          m_fallbackTimer(this)
+    {
+        m_done = false;
+        m_captureLostSent = false;
+        m_fallbackUsed = false;
 
-    CHECK(!m_window->IsShown());
+        Bind(wxEVT_TIMER, &ContextHelpCaptureLostState::OnTimer, this);
+    }
 
-    m_window->Show();
+    void Start()
+    {
+        m_captureLostTimer.StartOnce(1);
+    }
 
-    CHECK(m_window->IsShown());
+    void Done()
+    {
+        m_done = true;
+        m_captureLostTimer.Stop();
+        m_fallbackTimer.Stop();
+    }
+
+    bool WasCaptureLostSent() const { return m_captureLostSent; }
+    bool WasFallbackUsed() const { return m_fallbackUsed; }
+
+private:
+    void OnTimer(wxTimerEvent& event)
+    {
+        if ( m_done )
+            return;
+
+        if ( &event.GetTimer() == &m_captureLostTimer )
+        {
+            m_captureLostSent = true;
+            m_win->SimulateCaptureLost();
+            m_fallbackTimer.StartOnce(100);
+            return;
+        }
+
+        m_fallbackUsed = true;
+
+        wxKeyEvent eventKey(wxEVT_KEY_DOWN);
+        eventKey.SetEventObject(m_win);
+        m_win->GetEventHandler()->ProcessEvent(eventKey);
+    }
+
+    ContextHelpCaptureLostTester* const m_win;
+    wxTimer m_captureLostTimer;
+    wxTimer m_fallbackTimer;
+    bool m_done;
+    bool m_captureLostSent;
+    bool m_fallbackUsed;
+};
+#endif // wxUSE_HELP
+
+static void DoTestShowHideEvent(wxWindow* window)
+{
+    EventCounter show(window, wxEVT_SHOW);
+
+    CHECK(window->IsShown());
+
+    window->Show(false);
+
+    CHECK(!window->IsShown());
+
+    window->Show();
+
+    CHECK(window->IsShown());
 
     CHECK( show.GetCount() == 2 );
-#endif // __WXMSW__
+}
+
+TEST_CASE_METHOD(WindowTestCase, "Window::ShowHideEvent", "[window]")
+{
+    SECTION("Normal window")
+    {
+        DoTestShowHideEvent(m_window);
+    }
+
+    SECTION("Frozen window")
+    {
+        wxWindowUpdateLocker freeze(m_window->GetParent() );
+        REQUIRE( m_window->IsFrozen() );
+
+        DoTestShowHideEvent(m_window);
+    }
 }
 
 TEST_CASE_METHOD(WindowTestCase, "Window::KeyEvent", "[window]")
@@ -162,6 +256,28 @@ TEST_CASE_METHOD(WindowTestCase, "Window::Mouse", "[window]")
 
     CHECK(!m_window->HasCapture());
 }
+
+#if wxUSE_HELP
+TEST_CASE_METHOD(WindowTestCase, "Window::ContextHelpCaptureLost",
+                 "[window][help]")
+{
+    wxScopedPtr<ContextHelpCaptureLostTester>
+        winPtr(new ContextHelpCaptureLostTester(wxTheApp->GetTopWindow()));
+    ContextHelpCaptureLostTester* const win = winPtr.get();
+
+    ContextHelpCaptureLostState state(win);
+    state.Start();
+
+    wxContextHelp contextHelp(win, false);
+
+    CHECK(contextHelp.BeginContextHelp(win));
+
+    state.Done();
+    CHECK(state.WasCaptureLostSent());
+    CHECK(!state.WasFallbackUsed());
+    CHECK(!win->HasCapture());
+}
+#endif // wxUSE_HELP
 
 TEST_CASE_METHOD(WindowTestCase, "Window::Properties", "[window]")
 {
@@ -431,8 +547,13 @@ TEST_CASE_METHOD(WindowTestCase, "Window::SizerErrors", "[window][sizer][error]"
     wxScopedPtr<wxSizer> const sizer2(new wxBoxSizer(wxHORIZONTAL));
 
     REQUIRE_NOTHROW( sizer1->Add(child) );
+#ifdef __WXDEBUG__
     CHECK_THROWS_AS( sizer1->Add(child), TestAssertFailure );
     CHECK_THROWS_AS( sizer2->Add(child), TestAssertFailure );
+#else
+    CHECK_NOTHROW( sizer1->Add(child) );
+    CHECK_NOTHROW( sizer2->Add(child) );
+#endif
 
     CHECK_NOTHROW( sizer1->Detach(child) );
     CHECK_NOTHROW( sizer2->Add(child) );

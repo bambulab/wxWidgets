@@ -77,7 +77,7 @@ class wxHtmlImageMapAreaCell : public wxHtmlCell
 wxHtmlImageMapAreaCell::wxHtmlImageMapAreaCell( wxHtmlImageMapAreaCell::celltype t, wxString &incoords, double pixel_scale )
 {
     int i;
-    wxString x = incoords, y;
+    wxString x = incoords;
 
     type = t;
     while ((i = x.Find( ',' )) != wxNOT_FOUND)
@@ -546,7 +546,7 @@ void wxHtmlImageCell::Layout(int w)
         m_Width = w*m_bmpW/100;
 
         if (!m_bmpHpresent && m_bitmap != NULL)
-            m_Height = m_bitmap->GetScaledHeight()*m_Width/m_bitmap->GetScaledWidth();
+            m_Height = m_bitmap->GetLogicalHeight()*m_Width/m_bitmap->GetLogicalWidth();
         else
             m_Height = static_cast<int>(m_scale*m_bmpH);
     } else
@@ -623,10 +623,10 @@ void wxHtmlImageCell::Draw(wxDC& dc, int x, int y,
         }
 #endif 
 
-        if (m_Width != m_bitmap->GetScaledWidth())
-            imageScaleX = (double) m_Width / (double) m_bitmap->GetScaledWidth();
-        if (m_Height != m_bitmap->GetScaledHeight())
-            imageScaleY = (double) m_Height / (double) m_bitmap->GetScaledHeight();
+        if (m_Width != m_bitmap->GetLogicalWidth())
+            imageScaleX = (double) m_Width / (double) m_bitmap->GetLogicalWidth();
+        if (m_Height != m_bitmap->GetLogicalHeight())
+            imageScaleY = (double) m_Height / (double) m_bitmap->GetLogicalHeight();
 
         double us_x, us_y;
         dc.GetUserScale(&us_x, &us_y);

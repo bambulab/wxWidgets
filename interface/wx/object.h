@@ -5,7 +5,7 @@
 // Licence:     wxWindows licence
 /////////////////////////////////////////////////////////////////////////////
 
-/** @class wxObjectRefData
+/** @typedef wxObjectRefData
 
     This class is just a typedef to wxRefCounter and is used by wxObject.
 
@@ -337,7 +337,7 @@ public:
 
     /**
         The @e delete operator is defined for debugging versions of the library only,
-        when the identifier @c __WXDEBUG__ is defined.
+        when the identifier @c \__WXDEBUG__ is defined.
 
         It takes over memory deallocation, allowing wxDebugContext operations.
     */
@@ -345,7 +345,7 @@ public:
 
     /**
         The @e new operator is defined for debugging versions of the library only, when
-        the identifier @c __WXDEBUG__ is defined.
+        the identifier @c \__WXDEBUG__ is defined.
 
         It takes over memory allocation, allowing wxDebugContext operations.
     */
@@ -581,11 +581,12 @@ public:
         Constructor.
 
         @a ptr is a pointer to the reference counted object to which this class points.
-        If @a ptr is not NULL @b T::IncRef() will be called on the object.
+        This object takes ownership of @a ptr, i.e.\ it will call T::DecRef()
+        on it if it is non-null when this object is destroyed or reset.
     */
     wxObjectDataPtr(T* ptr = NULL);
 
-    //@{
+    ///@{
     /**
         This copy constructor increases the count of the reference counted object to
         which @a tocopy points and then this class will point to, as well.
@@ -595,7 +596,7 @@ public:
     template <typename U>
     wxObjectDataPtr(const wxObjectDataPtr<U>& tocopy);
     wxObjectDataPtr(const wxObjectDataPtr<T>& tocopy);
-    //@}
+    ///@}
 
 
     /**
@@ -652,7 +653,7 @@ public:
     */
     T* operator->() const;
 
-    //@{
+    ///@{
     /**
         Assignment operator.
 
@@ -662,7 +663,7 @@ public:
     wxObjectDataPtr<T>& operator=(const wxObjectDataPtr<U>& tocopy);
     wxObjectDataPtr<T>& operator=(const wxObjectDataPtr<T>& tocopy);
     wxObjectDataPtr<T>& operator=(T* ptr);
-    //@}
+    ///@}
 };
 
 
@@ -672,7 +673,7 @@ public:
 // ============================================================================
 
 /** @addtogroup group_funcmacro_rtti */
-//@{
+///@{
 
 /**
     Returns a pointer to the wxClassInfo object associated with this class.
@@ -896,10 +897,10 @@ public:
 */
 wxObject *wxCreateDynamicObject(const wxString& className);
 
-//@}
+///@}
 
 /** @addtogroup group_funcmacro_debug */
-//@{
+///@{
 
 /**
     This is defined in debug mode to be call the redefined new operator
@@ -915,5 +916,5 @@ wxObject *wxCreateDynamicObject(const wxString& className);
 */
 #define WXDEBUG_NEW( arg )
 
-//@}
+///@}
 

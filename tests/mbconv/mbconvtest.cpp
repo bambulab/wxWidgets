@@ -22,6 +22,8 @@
 #include "wx/txtstrm.h"
 #include "wx/mstream.h"
 
+#include "wx/private/localeset.h"
+
 #if defined wxHAVE_TCHAR_SUPPORT && !defined HAVE_WCHAR_H
     #define HAVE_WCHAR_H
 #endif
@@ -1106,7 +1108,7 @@ void MBConvTestCase::LibcTests()
     // supposed to use the same CRT -- no idea why and unfortunately gdb is too
     // flaky to debug it)
 #ifdef __VISUALC__
-    LocaleSetter loc("English_United States.1252");
+    wxLocaleSetter loc("English_United States.1252");
 
     wxMBConvLibc convLibc;
     TestCoder(
@@ -1505,4 +1507,9 @@ TEST_CASE("wxMBConv::cMB2WC", "[mbconv][mb2wc]")
     CHECK( wxConvUTF7.cMB2WC("").length() == 0 );
     CHECK( wxConvUTF7.cMB2WC(wxCharBuffer()).length() == 0 );
     CHECK( wxConvUTF7.cMB2WC("+AKM-").length() == 1 );
+
+    // A non-ASCII byte right after the shift character used to be read past
+    // the end of the base-64 decoding table (signed char index), now it's
+    // just rejected as an invalid encoded chunk.
+    CHECK( wxConvUTF7.cMB2WC("+\xc3").length() == 0 );
 }

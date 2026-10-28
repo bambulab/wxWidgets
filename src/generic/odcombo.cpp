@@ -108,9 +108,11 @@ void wxVListBoxComboPopup::SetFocus()
 #endif
 }
 
-void wxVListBoxComboPopup::OnDPIChanged(wxDPIChangedEvent& WXUNUSED(event))
+void wxVListBoxComboPopup::OnDPIChanged(wxDPIChangedEvent& event)
 {
     m_itemHeight = m_combo->GetCharHeight();
+
+    event.Skip();
 }
 
 bool wxVListBoxComboPopup::LazyCreate()
@@ -704,9 +706,19 @@ int wxVListBoxComboPopup::GetSelection() const
 
 void wxVListBoxComboPopup::SetStringValue( const wxString& value )
 {
-    int index = m_strings.Index(value);
-
     m_stringValue = value;
+
+    // Keep previous selection if it already corresponds to the given value
+    // (this is useful if there are multiple identical items in the combobox,
+    // we don't want to select the first one of them if another one had been
+    // previously selected).
+    if ( m_value >= 0 && m_value < (int)m_strings.size() &&
+            value == m_strings[m_value] )
+    {
+        return;
+    }
+
+    int index = m_strings.Index(value);
 
     if ( index >= 0 && index < (int)wxVListBox::GetItemCount() )
     {
@@ -806,7 +818,7 @@ void wxVListBoxComboPopup::CalcWidths()
 
 wxSize wxVListBoxComboPopup::GetAdjustedSize( int minWidth, int prefHeight, int maxHeight )
 {
-    int height = 250;
+    int height = FromDIP(250);
 
     maxHeight -= 2;  // Must take borders into account
 
@@ -838,7 +850,7 @@ wxSize wxVListBoxComboPopup::GetAdjustedSize( int minWidth, int prefHeight, int 
         }
     }
     else
-        height = 50;
+        height = FromDIP(50);
 
     CalcWidths();
 
@@ -978,7 +990,6 @@ void wxOwnerDrawnComboBox::DoSetPopupControl(wxComboPopup* popup)
     if ( !GetVListBoxComboPopup()->GetCount() )
     {
         GetVListBoxComboPopup()->Populate(m_initChs);
-        m_initChs.Clear();
     }
 }
 
@@ -1101,6 +1112,7 @@ int wxOwnerDrawnComboBox::DoInsertItems(const wxArrayStringsAdapter& items,
             AssignNewItemClientData(n, clientData, i, type);
         }
 
+        InvalidateBestSize();
         return n;
     }
     else
@@ -1111,6 +1123,7 @@ int wxOwnerDrawnComboBox::DoInsertItems(const wxArrayStringsAdapter& items,
             AssignNewItemClientData(pos, clientData, i, type);
         }
 
+        InvalidateBestSize();
         return pos - 1;
     }
 }

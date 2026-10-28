@@ -60,7 +60,8 @@ wxVersionInfo wxWebViewFactoryIE::GetVersionInfo()
     key.QueryValue("Version", value);
     long major = 0,
          minor = 0,
-         micro = 0;
+         micro = 0,
+         revision = 0;
     wxStringTokenizer tk(value, ". ");
     // Ignore the return value because if the version component is missing
     // or invalid (i.e. non-numeric), the only thing we can do is to ignore
@@ -68,7 +69,8 @@ wxVersionInfo wxWebViewFactoryIE::GetVersionInfo()
     tk.GetNextToken().ToLong(&major);
     tk.GetNextToken().ToLong(&minor);
     tk.GetNextToken().ToLong(&micro);
-    return wxVersionInfo("Internet Explorer", major, minor, micro);
+    tk.GetNextToken().ToLong(&revision);
+    return wxVersionInfo("Internet Explorer", major, minor, micro, revision);
 }
 
 //Convenience function for error conversion
@@ -953,7 +955,6 @@ void wxWebViewIE::ClearSelection()
     if(document)
     {
         wxCOMPtr<IHTMLSelectionObject> selection;
-        wxString selected;
         HRESULT hr = document->get_selection(&selection);
         if(SUCCEEDED(hr))
         {
@@ -993,7 +994,8 @@ bool wxWebViewIE::MSWSetEmulationLevel(wxWebViewIE_EmulationLevel level)
         wxT("\\FeatureControl\\FEATURE_BROWSER_EMULATION");
 
     wxRegKey key(wxRegKey::HKCU, IE_EMULATION_KEY);
-    if ( !key.Exists() )
+    // Check the existence of the key and create it if it does not exist
+    if ( !key.Exists() && !key.Create() )
     {
         wxLogWarning(_("Failed to find web view emulation level in the registry"));
         return false;
@@ -1045,40 +1047,25 @@ bool wxWebViewIE::RunScript(const wxString& javascript, wxString* output) const
         return false;
     }
 
-    wxJSScriptWrapper wrapJS(javascript, &m_runScriptCount);
+    wxJSScriptWrapper wrapJS(javascript, wxJSScriptWrapper::JS_OUTPUT_IE);
 
     wxAutomationObject scriptAO(scriptDispatch);
     wxVariant varResult;
 
-    wxString err;
-    if ( !CallEval(wrapJS.GetWrappedCode(), scriptAO, &varResult) )
-    {
-        err = _("failed to evaluate");
-    }
-    else if ( varResult.IsType("bool") && varResult.GetBool() )
-    {
-        if ( output != NULL )
-        {
-            if ( CallEval(wrapJS.GetOutputCode(), scriptAO, &varResult) )
-                *output = varResult.MakeString();
-            else
-                err = _("failed to retrieve execution result");
-        }
+    bool success = false;
+    wxString scriptOutput;
+    if ( CallEval(wrapJS.GetWrappedCode(), scriptAO, &varResult) )
+        success = wxJSScriptWrapper::ExtractOutput(varResult.MakeString(), &scriptOutput);
+    else
+        scriptOutput = _("failed to evaluate");
 
-        CallEval(wrapJS.GetCleanUpCode(), scriptAO, &varResult);
-    }
-    else // result available but not the expected "true"
-    {
-        err = varResult.MakeString();
-    }
+    if (!success)
+        wxLogWarning(_("Error running JavaScript: %s"), scriptOutput);
 
-    if ( !err.empty() )
-    {
-        wxLogWarning(_("Error running JavaScript: %s"), varResult.MakeString());
-        return false;
-    }
+    if (success && output)
+        *output = scriptOutput;
 
-    return true;
+    return success;
 }
 
 void wxWebViewIE::RegisterHandler(wxSharedPtr<wxWebViewHandler> handler)
@@ -1188,22 +1175,15 @@ bool wxWebViewIEImpl::IsElementVisible(wxCOMPtr<IHTMLElement> elm)
                 {
                     is_visible = false;
                 }
-                style->Release();
             }
-            elm2->Release();
         }
 
         //Lets check the object's parent element.
         IHTMLElement* parent;
         if(is_visible && SUCCEEDED(elm1->get_parentElement(&parent)))
-        {
             elm1 = parent;
-        }
         else
-        {
-            elm1->Release();
             break;
-        }
     }
     return is_visible;
 }
@@ -1790,7 +1770,7 @@ HRESULT STDMETHODCALLTYPE VirtualProtocol::ParseUrl(
             case wxPARSE_SECURITY_URL:
             case wxPARSE_SECURITY_DOMAIN:
             {
-                if ( cchResult < secLen )
+                if ( cchResult <= secLen )
                     return S_FALSE;
                 wcscpy(pwzResult, m_handler->GetSecurityURL().wc_str());
                 *pcchResult = secLen;

@@ -4,6 +4,7 @@
 // Author:      Vaclav Slavik
 // Created:     25/09/99
 // Copyright:   (c) Vaclav Slavik, 1999
+//              (c) 2026 wxWidgets development team
 // Licence:     wxWindows licence
 /////////////////////////////////////////////////////////////////////////////
 
@@ -54,7 +55,7 @@
 //      On a 300 dots-per-inch (dpi) printer, that may be rounded up to 3 dots
 //      (0.25 mm); on a 600 dpi printer, it can be rounded to 5 dots.
 //
-// See also https://trac.wxwidgets.org/ticket/10942.
+// See also https://github.com/wxWidgets/wxWidgets/issues/10942.
 #define TYPICAL_SCREEN_DPI  96.0
 
 //--------------------------------------------------------------------------------
@@ -109,6 +110,10 @@ void wxHtmlDCRenderer::SetHtmlText(const wxString& html, const wxString& basepat
 
     wxHtmlContainerCell* const cell = (wxHtmlContainerCell*) m_Parser.Parse(html);
     wxCHECK_RET( cell, "Failed to parse HTML" );
+
+    const wxColour bg = m_Parser.GetActualBackgroundColor();
+    if ( bg.IsOk() )
+        cell->SetBackgroundColour(bg);
 
     DoSetHtmlCell(cell);
 
@@ -185,8 +190,15 @@ void wxHtmlDCRenderer::Render(int x, int y, int from, int to)
     wxHtmlRenderingInfo rinfo;
     wxDefaultHtmlRenderingStyle rstyle;
     rinfo.SetStyle(&rstyle);
-    m_DC->SetBrush(*wxWHITE_BRUSH);
     wxDCClipper clip(*m_DC, x, y, m_Width, hght);
+    {
+        wxColour bg = m_Cells->GetBackgroundColour();
+        if ( !bg.IsOk() )
+            bg = *wxWHITE;
+        wxDCBrushChanger brushChanger(*m_DC, wxBrush(bg));
+        wxDCPenChanger penChanger(*m_DC, *wxTRANSPARENT_PEN);
+        m_DC->DrawRectangle(x, y, m_Width, hght);
+    }
     m_Cells->Draw(*m_DC,
                   x, (y - from),
                   y, y + hght,
@@ -562,7 +574,7 @@ wxString wxHtmlPrintout::TranslateHeader(const wxString& instr, int page)
     num.Printf(wxT("%i"), page);
     r.Replace(wxT("@PAGENUM@"), num);
 
-    num.Printf(wxT("%lu"), (unsigned long)(m_PageBreaks.size() - 1));
+    num.Printf(wxT("%lu"), (unsigned long)(m_PageBreaks.empty() ? 1 : m_PageBreaks.size() - 1));
     r.Replace(wxT("@PAGESCNT@"), num);
 
 #if wxUSE_DATETIME
@@ -573,6 +585,8 @@ wxString wxHtmlPrintout::TranslateHeader(const wxString& instr, int page)
     r.Replace(wxT("@DATE@"), wxEmptyString);
     r.Replace(wxT("@TIME@"), wxEmptyString);
 #endif
+
+    r.Replace(wxT("@USER@"), wxGetUserName());
 
     r.Replace(wxT("@TITLE@"), GetTitle());
 

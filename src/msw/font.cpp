@@ -48,6 +48,43 @@
 static const int PITCH_MASK = FIXED_PITCH | VARIABLE_PITCH;
 
 // ----------------------------------------------------------------------------
+// global functions implementation
+// ----------------------------------------------------------------------------
+
+wxString wxGetMSWFaceNameFromHFONT(HFONT hFont)
+{
+    ScreenHDC hdc;
+    SelectInHDC selectFont(hdc, hFont);
+
+    UINT otmSize = GetOutlineTextMetrics(hdc, 0, NULL);
+    if ( !otmSize )
+    {
+        wxLogLastError("GetOutlineTextMetrics(NULL)");
+        return wxString();
+    }
+
+    OUTLINETEXTMETRIC * const
+        otm = static_cast<OUTLINETEXTMETRIC *>(malloc(otmSize));
+    wxON_BLOCK_EXIT1( free, otm );
+
+    otm->otmSize = otmSize;
+    if ( !GetOutlineTextMetrics(hdc, otmSize, otm) )
+    {
+        wxLogLastError("GetOutlineTextMetrics()");
+        return wxString();
+    }
+
+    // in spite of its type, the otmpFamilyName field of OUTLINETEXTMETRIC
+    // gives an offset in _bytes_ of the face (not family!) name from the
+    // struct start while the name itself is an array of TCHARs
+    //
+    // FWIW otmpFaceName contains the same thing as otmpFamilyName followed
+    // by a possible " Italic" or " Bold" or something else suffix
+    return reinterpret_cast<wxChar *>(otm) +
+                wxPtrToUInt(otm->otmpFamilyName)/sizeof(wxChar);
+}
+
+// ----------------------------------------------------------------------------
 // wxFontRefData - the internal description of the font
 // ----------------------------------------------------------------------------
 
@@ -117,9 +154,9 @@ public:
     wxString GetFaceName() const
     {
         wxString facename = m_nativeFontInfo.GetFaceName();
-        if ( facename.empty() )
+        if ( facename.empty() || wxIsFaceNamePossiblyTruncated(facename) )
         {
-            facename = GetMSWFaceName();
+            facename = wxGetMSWFaceNameFromHFONT((HFONT)GetHFONT());
             if ( !facename.empty() )
             {
                 // cache the face name, it shouldn't change unless the family
@@ -266,42 +303,6 @@ protected:
     {
         if ( !m_hFont )
             const_cast<wxFontRefData *>(this)->Alloc();
-    }
-
-    // retrieve the face name really being used by the font: this is used to
-    // get the face name selected by the system when we don't specify it (but
-    // use just the family for example)
-    wxString GetMSWFaceName() const
-    {
-        ScreenHDC hdc;
-        SelectInHDC selectFont(hdc, (HFONT)GetHFONT());
-
-        UINT otmSize = GetOutlineTextMetrics(hdc, 0, NULL);
-        if ( !otmSize )
-        {
-            wxLogLastError("GetOutlineTextMetrics(NULL)");
-            return wxString();
-        }
-
-        OUTLINETEXTMETRIC * const
-            otm = static_cast<OUTLINETEXTMETRIC *>(malloc(otmSize));
-        wxON_BLOCK_EXIT1( free, otm );
-
-        otm->otmSize = otmSize;
-        if ( !GetOutlineTextMetrics(hdc, otmSize, otm) )
-        {
-            wxLogLastError("GetOutlineTextMetrics()");
-            return wxString();
-        }
-
-        // in spite of its type, the otmpFamilyName field of OUTLINETEXTMETRIC
-        // gives an offset in _bytes_ of the face (not family!) name from the
-        // struct start while the name itself is an array of TCHARs
-        //
-        // FWIW otmpFaceName contains the same thing as otmpFamilyName followed
-        // by a possible " Italic" or " Bold" or something else suffix
-        return reinterpret_cast<wxChar *>(otm) +
-                    wxPtrToUInt(otm->otmpFamilyName)/sizeof(wxChar);
     }
 
     // are we using m_nativeFontInfo.lf.lfHeight for point size or pixel size?
@@ -543,7 +544,7 @@ void wxNativeFontInfo::SetPixelSize(const wxSize& pixelSize)
     lf.lfHeight = -abs(pixelSize.GetHeight());
     lf.lfWidth = pixelSize.GetWidth();
 
-    // We don't have the right DPI to use here neither, but we need to update
+    // We don't have the right DPI to use here either, but we need to update
     // the point size too, so fall back to the default.
     pointSize = GetPointSizeAtPPI(lf.lfHeight);
 }
@@ -1123,7 +1124,7 @@ bool wxFontBase::AddPrivateFont(const wxString& filename)
 {
     if ( !AddFontResourceEx(filename.t_str(), FR_PRIVATE, 0) )
     {
-        wxLogSysError(_("Font file \"%s\" couldn't be loaded"), filename);
+        wxLogError(_("Font file \"%s\" couldn't be loaded"), filename);
         return false;
     }
 

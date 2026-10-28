@@ -25,6 +25,7 @@
 
 #include "wx/log.h"
 #include "wx/translation.h"
+#include "wx/utils.h"
 
 #include "wx/private/secretstore.h"
 
@@ -43,6 +44,13 @@ wxSecretValue::wxSecretValue(const wxSecretValue& other)
 {
     if ( m_impl )
         m_impl->IncRef();
+}
+
+/* static */
+wxSecretValueImpl*
+wxSecretValue::NewImpl(size_t size, const void *data)
+{
+    return NewImpl(size, data, "text/plain");
 }
 
 wxSecretValue& wxSecretValue::operator=(const wxSecretValue& other)
@@ -114,18 +122,11 @@ wxString wxSecretValue::GetAsString(const wxMBConv& conv) const
            );
 }
 
-#ifndef __WINDOWS__
-
 /* static */
 void wxSecretValue::Wipe(size_t size, void *data)
 {
-    // memset_s() is not present under non-MSW systems anyhow and there doesn't
-    // seem to be any other way to portably ensure that the memory is really
-    // cleared, so just do it in this obvious way.
-    memset(data, 0, size);
+    wxSecureZeroMemory(data, size);
 }
-
-#endif // __WINDOWS__
 
 /* static */
 void wxSecretValue::WipeString(wxString& str)

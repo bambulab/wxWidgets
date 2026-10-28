@@ -566,7 +566,7 @@ ID2D1Factory* wxD2D1Factory()
         // the Direct2D Debug Layer is only available starting with Windows 8
         // and Visual Studio 2012.
 #if defined(__WXDEBUG__) && defined(__VISUALC__) && wxCHECK_VISUALC_VERSION(11)
-        if ( wxGetWinVersion() >= wxWinVersion_8 )
+        if ( wxTheAssertHandler && wxGetWinVersion() >= wxWinVersion_8 )
         {
             factoryOptions.debugLevel = D2D1_DEBUG_LEVEL_WARNING;
         }
@@ -1103,36 +1103,6 @@ wxCOMPtr<ID2D1Geometry> wxD2DConvertRegionToGeometry(ID2D1Factory* direct2dFacto
 
     return wxCOMPtr<ID2D1Geometry>(resultGeometry);
 }
-
-class wxD2DOffsetHelper
-{
-public:
-    explicit wxD2DOffsetHelper(wxGraphicsContext* g)
-        : m_context(g)
-    {
-        m_offset = 0;
-        if (m_context->ShouldOffset())
-        {
-            const wxGraphicsMatrix matrix(m_context->GetTransform());
-            double x = m_context->GetContentScaleFactor(), y = x;
-            matrix.TransformDistance(&x, &y);
-            m_offset = 0.5 / wxMin(fabs(x), fabs(y));
-            m_context->Translate(m_offset, m_offset);
-        }
-    }
-
-    ~wxD2DOffsetHelper()
-    {
-        if (m_offset > 0)
-        {
-            m_context->Translate(-m_offset, -m_offset);
-        }
-    }
-
-private:
-    wxGraphicsContext* m_context;
-    double m_offset;
-};
 
 bool operator==(const D2D1::Matrix3x2F& lhs, const D2D1::Matrix3x2F& rhs)
 {
@@ -3539,8 +3509,15 @@ protected:
             clientRect.right - clientRect.left,
             clientRect.bottom - clientRect.top);
 
+        // We explicitly specify 96 DPI (a.k.a. 100% scaling) because otherwise
+        // D2D would perform pixel scaling on its own, while we want to do it
+        // ourselves, for consistency with wxDC.
         result = m_factory->CreateHwndRenderTarget(
-            D2D1::RenderTargetProperties(),
+            D2D1::RenderTargetProperties(
+                    D2D1_RENDER_TARGET_TYPE_DEFAULT,
+                    D2D1::PixelFormat(),
+                    96.f,
+                    96.f),
             D2D1::HwndRenderTargetProperties(m_hwnd, size),
             &renderTarget);
 
@@ -3836,6 +3813,8 @@ public:
     void PushState() wxOVERRIDE {}
     void PopState() wxOVERRIDE {}
     void Flush() wxOVERRIDE {}
+    WXHDC GetNativeHDC() wxOVERRIDE { return NULL; };
+    void ReleaseNativeHDC(WXHDC WXUNUSED(hdc)) wxOVERRIDE {};
 
 protected:
     void DoDrawText(const wxString&, wxDouble, wxDouble) wxOVERRIDE {}
@@ -3992,6 +3971,11 @@ public:
         return GetRenderTarget();
     }
 
+    WXHDC GetNativeHDC() wxOVERRIDE;
+    void ReleaseNativeHDC(WXHDC hdc) wxOVERRIDE;
+
+    class OffsetHelper;
+
 private:
     void Init();
 
@@ -4041,6 +4025,7 @@ private:
     wxStack<StateData> m_stateStack;
     wxStack<LayerData> m_layers;
     ID2D1RenderTarget* m_cachedRenderTarget;
+    wxCOMPtr<ID2D1GdiInteropRenderTarget> m_gdiRenderTarget;
     D2D1::Matrix3x2F m_initTransform;
     // Clipping box
     bool m_isClipBoxValid;
@@ -4048,6 +4033,41 @@ private:
 
 private:
     wxDECLARE_NO_COPY_CLASS(wxD2DContext);
+};
+
+class wxD2DContext::OffsetHelper
+{
+public:
+    OffsetHelper(wxD2DContext* gc, const wxGraphicsPen& pen)
+    {
+        m_shouldOffset = gc->ShouldOffset();
+        if (!m_shouldOffset)
+            return;
+
+        m_gc = gc;
+        m_offsetX = m_offsetY = 0.5;
+
+        const float width = wxGetD2DPenData(pen)->GetWidth();
+        if (width <= 0)
+        {
+            // For 1-pixel pen width, offset by half a device pixel
+            double x = gc->GetContentScaleFactor(), y = x;
+            gc->GetTransform().TransformDistance(&x, &y);
+            m_offsetX /= x;
+            m_offsetY /= y;
+        }
+        gc->Translate(m_offsetX, m_offsetY);
+    }
+    ~OffsetHelper()
+    {
+        if (m_shouldOffset)
+            m_gc->Translate(-m_offsetX, -m_offsetY);
+    }
+
+private:
+    wxD2DContext* m_gc;
+    double m_offsetX, m_offsetY;
+    bool m_shouldOffset;
 };
 
 //-----------------------------------------------------------------------------
@@ -4346,7 +4366,7 @@ void wxD2DContext::StrokePath(const wxGraphicsPath& p)
     if (m_composition == wxCOMPOSITION_DEST)
         return;
 
-    wxD2DOffsetHelper helper(this);
+    OffsetHelper helper(this, m_pen);
 
     EnsureInitialized();
     AdjustRenderTargetSize();
@@ -4719,21 +4739,15 @@ bool wxD2DContext::ShouldOffset() const
     if (!m_enableOffset || m_pen.IsNull())
         return false;
 
-    wxD2DPenData* const penData = wxGetD2DPenData(m_pen);
+    const float width = wxGetD2DPenData(m_pen)->GetWidth();
 
     // always offset for 1-pixel width
-    if (penData->IsZeroWidth())
+    if (width <= 0)
         return true;
 
-    // no offset if overall scale is not odd integer
-    const wxGraphicsMatrix matrix(GetTransform());
-    double x = GetContentScaleFactor(), y = x;
-    matrix.TransformDistance(&x, &y);
-    if (!wxIsSameDouble(fmod(wxMin(fabs(x), fabs(y)), 2.0), 1.0))
-        return false;
-
     // offset if pen width is odd integer
-    return wxIsSameDouble(fmod(double(penData->GetWidth()), 2.0), 1.0);
+    const int w = int(width);
+    return (w & 1) && width == float(w);
 }
 
 void wxD2DContext::DoDrawText(const wxString& str, wxDouble x, wxDouble y)
@@ -4810,7 +4824,7 @@ void wxD2DContext::DrawRectangle(wxDouble x, wxDouble y, wxDouble w, wxDouble h)
     if (m_composition == wxCOMPOSITION_DEST)
         return;
 
-    wxD2DOffsetHelper helper(this);
+    OffsetHelper helper(this, m_pen);
 
     EnsureInitialized();
     AdjustRenderTargetSize();
@@ -4839,7 +4853,7 @@ void wxD2DContext::DrawRoundedRectangle(wxDouble x, wxDouble y, wxDouble w, wxDo
     if (m_composition == wxCOMPOSITION_DEST)
         return;
 
-    wxD2DOffsetHelper helper(this);
+    OffsetHelper helper(this, m_pen);
 
     EnsureInitialized();
     AdjustRenderTargetSize();
@@ -4869,7 +4883,7 @@ void wxD2DContext::DrawEllipse(wxDouble x, wxDouble y, wxDouble w, wxDouble h)
     if (m_composition == wxCOMPOSITION_DEST)
         return;
 
-    wxD2DOffsetHelper helper(this);
+    OffsetHelper helper(this, m_pen);
 
     EnsureInitialized();
     AdjustRenderTargetSize();
@@ -4959,11 +4973,29 @@ void wxD2DContext::GetDPI(wxDouble* dpiX, wxDouble* dpiY) const
         GetRenderTarget()->GetDpi(&x, &y);
 
         if ( dpiX )
-            *dpiX = x;
+            *dpiX = x*GetContentScaleFactor();
         if ( dpiY )
-            *dpiY = y;
+            *dpiY = y*GetContentScaleFactor();
     }
 }
+
+WXHDC wxD2DContext::GetNativeHDC()
+{
+    if ( !m_gdiRenderTarget )
+        GetRenderTarget()->QueryInterface(IID_ID2D1GdiInteropRenderTarget, reinterpret_cast<void**>(&m_gdiRenderTarget));
+    wxASSERT(m_gdiRenderTarget);
+    HDC hdc;
+    HRESULT hr = m_gdiRenderTarget->GetDC(D2D1_DC_INITIALIZE_MODE_COPY, &hdc);
+    wxCHECK_MSG(SUCCEEDED(hr), NULL, wxString::Format("Can't get HDC from Direct2D context (hr=%x)", hr));
+    return hdc;
+};
+
+void wxD2DContext::ReleaseNativeHDC(WXHDC WXUNUSED(hdc))
+{
+    wxCHECK_RET(m_gdiRenderTarget, "Can't release HDC for Direct2D context");
+    HRESULT hr = m_gdiRenderTarget->ReleaseDC(NULL);
+    wxCHECK_HRESULT_RET(hr);
+};
 
 //-----------------------------------------------------------------------------
 // wxD2DRenderer declaration
@@ -5107,8 +5139,10 @@ wxGraphicsContext* wxD2DRenderer::CreateContext(const wxMemoryDC& dc)
     wxBitmap bmp = dc.GetSelectedBitmap();
     wxASSERT_MSG( bmp.IsOk(), wxS("Should select a bitmap before creating wxGraphicsContext") );
 
-    return new wxD2DContext(this, m_direct2dFactory, dc.GetHDC(), &dc,
+    wxD2DContext* d2d = new wxD2DContext(this, m_direct2dFactory, dc.GetHDC(), &dc,
                             bmp.HasAlpha() ? D2D1_ALPHA_MODE_PREMULTIPLIED : D2D1_ALPHA_MODE_IGNORE);
+    d2d->SetContentScaleFactor(dc.GetContentScaleFactor());
+    return d2d;
 }
 
 #if wxUSE_PRINTING_ARCHITECTURE
@@ -5292,13 +5326,11 @@ wxGraphicsFont wxD2DRenderer::CreateFont(
 {
     // Use the same DPI as wxFont will use in SetPixelSize, so these cancel
     // each other out and we are left with the actual pixel size.
-    ScreenHDC hdc;
-    wxRealPoint dpi(::GetDeviceCaps(hdc, LOGPIXELSX),
-                    ::GetDeviceCaps(hdc, LOGPIXELSY));
+    const wxSize dpi = wxGetDPIofHDC(ScreenHDC());
 
     return CreateFontAtDPI(
         wxFontInfo(wxSize(sizeInPixels, sizeInPixels)).AllFlags(flags).FaceName(facename),
-        dpi, col);
+        wxRealPoint(dpi.x, dpi.y), col);
 }
 
 wxGraphicsFont wxD2DRenderer::CreateFontAtDPI(const wxFont& font,

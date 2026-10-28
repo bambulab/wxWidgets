@@ -27,6 +27,9 @@
 
 #include "wx/thread.h"
 #include "wx/except.h"
+#include "wx/scopeguard.h"
+
+#include "wx/private/threadinfo.h"
 
 #ifndef WX_PRECOMP
     #include "wx/app.h"
@@ -64,6 +67,18 @@
 // we use wxFFile under Linux in GetCPUCount()
 #ifdef __LINUX__
     #include "wx/ffile.h"
+    #include "wx/private/glibc.h"
+    #if wxCHECK_GLIBC_VERSION(2, 12)
+        #define wxHAVE_PTHREAD_SETNAME_NP
+        #define wxCAN_SET_LINUX_THREAD_NAME
+    #else
+        #include <sys/prctl.h>
+
+        // This is only available since Linux 2.6.9
+        #ifdef PR_SET_NAME
+            #define wxCAN_SET_LINUX_THREAD_NAME
+        #endif
+    #endif
 #endif
 
 // We don't provide wxAtomicLong and it doesn't seem really useful to add it
@@ -503,13 +518,10 @@ wxCondError wxConditionInternal::Wait()
 
 wxCondError wxConditionInternal::WaitTimeout(unsigned long milliseconds)
 {
-    wxLongLong curtime = wxGetUTCTimeMillis();
+    wxLongLong_t curtime = wxGetUTCTimeMillis().GetValue();
     curtime += milliseconds;
-    wxLongLong temp = curtime / 1000;
-    int sec = temp.GetLo();
-    temp *= 1000;
-    temp = curtime - temp;
-    int millis = temp.GetLo();
+    const wxLongLong_t sec = curtime / 1000;
+    const int millis = curtime - sec * 1000;
 
     timespec tspec;
 
@@ -843,6 +855,11 @@ void *wxPthreadStart(void *ptr)
 
 void *wxThreadInternal::PthreadStart(wxThread *thread)
 {
+    // Ensure that we clean up thread-specific data before exiting the thread
+    // and do it as late as possible as wxLog calls can recreate it and may
+    // happen until the very end.
+    wxON_BLOCK_EXIT0(wxThreadSpecificInfo::ThreadCleanUp);
+
     wxThreadInternal *pthread = thread->m_internal;
 
     wxLogTrace(TRACE_THREADS, wxT("Thread %p started."), THR_ID(pthread));
@@ -888,7 +905,7 @@ void *wxThreadInternal::PthreadStart(wxThread *thread)
 
         wxTRY
         {
-            pthread->m_exitcode = thread->CallEntry();
+            pthread->m_exitcode = thread->Entry();
 
             wxLogTrace(TRACE_THREADS,
                        wxT("Thread %p Entry() returned %lu."),
@@ -1678,6 +1695,43 @@ wxThreadError wxThread::Kill()
             return wxTHREAD_NO_ERROR;
 #endif // HAVE_PTHREAD_CANCEL
     }
+}
+
+bool wxThread::SetName(const wxString &name)
+{
+    wxCHECK_MSG(this == This(), false,
+        "SetName() must be called from inside the thread to be named");
+
+    return SetNameForCurrent(name);
+}
+
+/* static */
+bool wxThread::SetNameForCurrent(const wxString &name)
+{
+    // the API is nearly the same on different *nix, but not quite:
+
+#if defined(__DARWIN__)
+    pthread_setname_np(name.utf8_str());
+    return true;
+#elif defined(__LINUX__) && defined(wxCAN_SET_LINUX_THREAD_NAME)
+    // Linux doesn't allow names longer than 15 bytes.
+    char truncatedName[16] = { 0 };
+    strncpy(truncatedName, name.utf8_str(), 15);
+
+    #ifdef wxHAVE_PTHREAD_SETNAME_NP
+        return pthread_setname_np(pthread_self(), truncatedName) == 0;
+    #else
+        return prctl(PR_SET_NAME, (unsigned long)(void*)truncatedName, 0, 0, 0);
+    #endif
+#else
+    wxUnusedVar(name);
+    wxLogDebug("No implementation for wxThread::SetName() on this OS.");
+    return false;
+#endif
+    // TODO: #elif defined(__FREEBSD__) || defined(__OPENBSD__)
+    // TODO: These two BSDs would need #include <pthread_np.h>
+    // and the function call would be:
+    // pthread_set_name_np(pthread_self(), name.utf8_str());
 }
 
 void wxThread::Exit(ExitCode status)

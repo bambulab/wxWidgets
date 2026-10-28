@@ -3,6 +3,7 @@
 // Purpose:     wxHtmlWindow class for parsing & displaying HTML (implementation)
 // Author:      Vaclav Slavik
 // Copyright:   (c) 1999 Vaclav Slavik
+// Copyright:   (c) 2026 wxWidgets development team
 // Licence:     wxWindows licence
 /////////////////////////////////////////////////////////////////////////////
 
@@ -189,49 +190,46 @@ void wxHtmlWindowMouseHelper::HandleIdle(wxHtmlCell *rootCell,
                                          const wxPoint& pos)
 {
     wxHtmlCell *cell = rootCell ? rootCell->FindCellByPos(pos.x, pos.y) : NULL;
+    wxHtmlLinkInfo *lnk = NULL;
+    wxPoint relpos;
 
-    if (cell != m_tmpLastCell)
+    if ( cell )
     {
-        wxHtmlLinkInfo *lnk = NULL;
-        if (cell)
-        {
-            // adjust the coordinates to be relative to this cell:
-            wxPoint relpos = pos - cell->GetAbsPos(rootCell);
-            lnk = cell->GetLink(relpos.x, relpos.y);
-        }
-
-        wxCursor cur;
-        if (cell)
-            cur = cell->GetMouseCursorAt(m_interface, pos);
-        else
-            cur = m_interface->GetHTMLCursor(
-                        wxHtmlWindowInterface::HTMLCursor_Default);
-
-        m_interface->GetHTMLWindow()->SetCursor(cur);
-
-        if (lnk != m_tmpLastLink)
-        {
-            if (lnk)
-                m_interface->SetHTMLStatusText(lnk->GetHref());
-            else
-                m_interface->SetHTMLStatusText(wxEmptyString);
-
-            m_tmpLastLink = lnk;
-        }
-
-        m_tmpLastCell = cell;
+        relpos = pos - cell->GetAbsPos(rootCell);
+        lnk = cell->GetLink(relpos.x, relpos.y);
     }
-    else // mouse moved but stayed in the same cell
+
+    wxCursor cur;
+    if ( cell )
+    {
+        cur = cell->GetMouseCursorAt(m_interface, relpos);
+    }
+    else
+    {
+        cur = m_interface->GetHTMLCursor(
+                    wxHtmlWindowInterface::HTMLCursor_Default);
+    }
+
+    m_interface->GetHTMLWindow()->SetCursor(cur);
+
+    if ( lnk != m_tmpLastLink )
+    {
+        if ( lnk )
+            m_interface->SetHTMLStatusText(lnk->GetHref());
+        else
+            m_interface->SetHTMLStatusText(wxEmptyString);
+
+        m_tmpLastLink = lnk;
+    }
+
+    if ( cell == m_tmpLastCell )
     {
         if ( cell )
-        {
-            // A single cell can have different cursors for different positions,
-            // so update cursor for this case as well.
-            wxCursor cur = cell->GetMouseCursorAt(m_interface, pos);
-            m_interface->GetHTMLWindow()->SetCursor(cur);
-
-            OnCellMouseHover(cell, pos.x, pos.y);
-        }
+            OnCellMouseHover(cell, relpos.x, relpos.y);
+    }
+    else
+    {
+        m_tmpLastCell = cell;
     }
 
     m_tmpMouseMoved = false;
@@ -489,7 +487,7 @@ bool wxHtmlWindow::DoSetPage(const wxString& source)
     SetBackgroundImage(wxNullBitmap);
 
     double pixelScale = 1.0;
-#ifndef wxHAVE_DPI_INDEPENDENT_PIXELS
+#ifndef wxHAS_DPI_INDEPENDENT_PIXELS
     pixelScale = GetDPIScaleFactor();
 #endif
 
@@ -583,7 +581,7 @@ bool wxHtmlWindow::LoadPage(const wxString& location)
 
         if (f == NULL)
         {
-            wxLogError(_("Unable to open requested HTML document: %s"), location.c_str());
+            wxLogError(_("Unable to open requested HTML document: %s"), location);
             m_tmpCanDrawLocks--;
             SetHTMLStatusText(wxEmptyString);
             return false;
@@ -688,7 +686,7 @@ bool wxHtmlWindow::ScrollToAnchor(const wxString& anchor)
     const wxHtmlCell *c = m_Cell->Find(wxHTML_COND_ISANCHOR, &anchor);
     if (!c)
     {
-        wxLogWarning(_("HTML anchor %s does not exist."), anchor.c_str());
+        wxLogWarning(_("HTML anchor %s does not exist."), anchor);
         return false;
     }
     else
@@ -718,7 +716,7 @@ void wxHtmlWindow::OnSetTitle(const wxString& title)
     if (m_RelatedFrame)
     {
         wxString tit;
-        tit.Printf(m_TitleFormat, title.c_str());
+        tit.Printf(m_TitleFormat, title);
         m_RelatedFrame->SetTitle(tit);
     }
     m_OpenedPageTitle = title;
@@ -1017,7 +1015,7 @@ bool wxHtmlWindow::CopySelection(ClipboardType t)
             wxTheClipboard->SetData(new wxTextDataObject(txt));
             wxTheClipboard->Close();
             wxLogTrace(wxT("wxhtmlselection"),
-                       _("Copied to clipboard:\"%s\""), txt.c_str());
+                       _("Copied to clipboard:\"%s\""), txt);
 
             return true;
         }
@@ -1045,25 +1043,27 @@ void wxHtmlWindow::OnLinkClicked(const wxHtmlLinkInfo& link)
 
 void wxHtmlWindow::DoEraseBackground(wxDC& dc)
 {
+    wxBitmap bmp = m_bmpBg.GetBitmapFor(this);
+
     // if we don't have any background bitmap we just fill it with background
     // colour and we also must do it if the background bitmap is not fully
     // opaque as otherwise junk could be left there
-    if ( !m_bmpBg.IsOk() || m_bmpBg.GetMask() )
+    if ( !bmp.IsOk() || bmp.GetMask() )
     {
         dc.SetBackground(GetBackgroundColour());
         dc.Clear();
     }
 
-    if ( m_bmpBg.IsOk() )
+    if ( bmp.IsOk() )
     {
         // draw the background bitmap tiling it over the entire window area
         const wxSize sz = GetVirtualSize();
-        const wxSize sizeBmp(m_bmpBg.GetWidth(), m_bmpBg.GetHeight());
+        const wxSize sizeBmp(bmp.GetLogicalWidth(), bmp.GetLogicalHeight());
         for ( wxCoord x = 0; x < sz.x; x += sizeBmp.x )
         {
             for ( wxCoord y = 0; y < sz.y; y += sizeBmp.y )
             {
-                dc.DrawBitmap(m_bmpBg, x, y, true /* use mask */);
+                dc.DrawBitmap(bmp, x, y, true /* use mask */);
             }
         }
     }
@@ -1321,7 +1321,9 @@ void wxHtmlWindow::OnSize(wxSizeEvent& event)
 
 void wxHtmlWindow::OnDPIChanged(wxDPIChangedEvent& WXUNUSED(event))
 {
+    wxBitmapBundle bmpBg = m_bmpBg;
     DoSetPage(*(m_Parser->GetSource()));
+    SetBackgroundImage(bmpBg);
 }
 
 void wxHtmlWindow::OnMouseMove(wxMouseEvent& WXUNUSED(event))
@@ -1527,13 +1529,7 @@ void wxHtmlWindow::OnInternalIdle()
 
         // handle cursor and status bar text changes:
 
-        // NB: because we're passing in 'cell' and not 'm_Cell' (so that the
-        //     leaf cell lookup isn't done twice), we need to adjust the
-        //     position for the new root:
-        wxPoint posInCell(x, y);
-        if (cell)
-            posInCell -= cell->GetAbsPos();
-        wxHtmlWindowMouseHelper::HandleIdle(cell, posInCell);
+        wxHtmlWindowMouseHelper::HandleIdle(m_Cell, wxPoint(x, y));
     }
 }
 
@@ -1827,7 +1823,7 @@ void wxHtmlWindow::SetHTMLBackgroundColour(const wxColour& clr)
     SetBackgroundColour(clr);
 }
 
-void wxHtmlWindow::SetHTMLBackgroundImage(const wxBitmap& bmpBg)
+void wxHtmlWindow::SetHTMLBackgroundImage(const wxBitmapBundle& bmpBg)
 {
     SetBackgroundImage(bmpBg);
 }

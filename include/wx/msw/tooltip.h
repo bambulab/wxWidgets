@@ -92,6 +92,7 @@ private:
     // but use GetToolTipCtrl() which will create it when needed
     static WXHWND ms_hwndTT;
 public:
+    // Bambu: public for MSW dark-mode tooltip HWND theming in BambuStudio
     // create the tooltip ctrl if it doesn't exist yet and return its HWND
     static WXHWND GetToolTipCtrl();
 private:

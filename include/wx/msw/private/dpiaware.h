@@ -15,6 +15,8 @@
 #endif
 
 #include "wx/dynlib.h"
+#include "wx/display.h"
+#include "wx/sysopt.h"
 
 #if wxUSE_DYNLIB_CLASS
 
@@ -35,22 +37,24 @@ class AutoSystemDpiAware
 
 public:
     AutoSystemDpiAware()
-        : m_prevContext(WXDPI_AWARENESS_CONTEXT_UNAWARE),
-          m_pfnSetThreadDpiAwarenessContext((SetThreadDpiAwarenessContext_t)-1)
+        : m_prevContext(WXDPI_AWARENESS_CONTEXT_UNAWARE)
     {
-        if ( m_pfnSetThreadDpiAwarenessContext == (SetThreadDpiAwarenessContext_t)-1)
+        if ( !Needed() )
+            return;
+
+        if ( ms_pfnSetThreadDpiAwarenessContext == (SetThreadDpiAwarenessContext_t)-1)
         {
             wxLoadedDLL dllUser32("user32.dll");
-            wxDL_INIT_FUNC(m_pfn, SetThreadDpiAwarenessContext, dllUser32);
+            wxDL_INIT_FUNC(ms_pfn, SetThreadDpiAwarenessContext, dllUser32);
         }
 
-        if ( m_pfnSetThreadDpiAwarenessContext )
+        if ( ms_pfnSetThreadDpiAwarenessContext )
         {
-            m_prevContext = m_pfnSetThreadDpiAwarenessContext(
+            m_prevContext = ms_pfnSetThreadDpiAwarenessContext(
                                     WXDPI_AWARENESS_CONTEXT_UNAWARE_GDISCALED);
             if ( !m_prevContext )
             {
-                m_prevContext = m_pfnSetThreadDpiAwarenessContext(
+                m_prevContext = ms_pfnSetThreadDpiAwarenessContext(
                                     WXDPI_AWARENESS_CONTEXT_SYSTEM_AWARE);
             }
         }
@@ -59,16 +63,32 @@ public:
 
     ~AutoSystemDpiAware()
     {
-        if ( m_pfnSetThreadDpiAwarenessContext )
+        if ( ms_pfnSetThreadDpiAwarenessContext &&
+                ms_pfnSetThreadDpiAwarenessContext != (SetThreadDpiAwarenessContext_t)-1 )
         {
-            m_pfnSetThreadDpiAwarenessContext(m_prevContext);
+            ms_pfnSetThreadDpiAwarenessContext(m_prevContext);
         }
+    }
+
+    static bool Needed()
+    {
+        // use system-dpi-aware context when:
+        // - the user did not set an option to force per-monitor context
+        // - there are displays with different DPI
+        if ( wxSystemOptions::GetOptionInt("msw.native-dialogs-pmdpi") == 1 )
+            return false;
+
+        bool diferentDPI = false;
+        for ( unsigned i = 1; i < wxDisplay::GetCount() && !diferentDPI; ++i )
+            diferentDPI = wxDisplay(0u).GetPPI() != wxDisplay(i).GetPPI();
+        return diferentDPI;
     }
 
 private:
     WXDPI_AWARENESS_CONTEXT m_prevContext;
 
-    SetThreadDpiAwarenessContext_t m_pfnSetThreadDpiAwarenessContext;
+    // This static member is defined in src/msw/window.cpp.
+    static SetThreadDpiAwarenessContext_t ms_pfnSetThreadDpiAwarenessContext;
 };
 
 #else // !wxUSE_DYNLIB_CLASS
