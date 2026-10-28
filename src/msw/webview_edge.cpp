@@ -173,7 +173,17 @@ void wxWebViewEdgeImpl::UpdateBounds()
     RECT r;
     wxCopyRectToRECT(m_ctrl->GetClientRect(), r);
     if (m_webView)
+    {
         m_webViewController->put_Bounds(r);
+        // webview2 rasterizationScale = monitorDPI * TextScale
+        // Windows text scaling is disabled here to ensure consistency with other native wx controls.
+        wxCOMPtr<ICoreWebView2Controller3> controller3;
+        if (SUCCEEDED(m_webViewController->QueryInterface(IID_PPV_ARGS(&controller3)))) 
+        {
+            controller3->put_ShouldDetectMonitorScaleChanges(FALSE);
+            controller3->put_RasterizationScale(m_ctrl->GetDPIScaleFactor());
+        }
+    }
 }
 
 HRESULT wxWebViewEdgeImpl::OnNavigationStarting(ICoreWebView2* WXUNUSED(sender), ICoreWebView2NavigationStartingEventArgs* args)
